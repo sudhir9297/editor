@@ -10,6 +10,8 @@ import {
   SkylightNode as SkylightNodeSchema,
   type RoofSegmentNode,
   RoofSegmentNode as RoofSegmentNodeSchema,
+  type SolarPanelNode,
+  SolarPanelNode as SolarPanelNodeSchema,
   useScene,
 } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
@@ -108,7 +110,27 @@ export function RoofPanel() {
     sfxEmitter.emit('sfx:structure-build')
   }, [node, segments, createNode, updateNode, setSelection])
 
-  // Flatten chimneys hosted by any segment of this roof.
+  const handleAddSolarPanel = useCallback(() => {
+    if (!node) return
+    const firstSegment = segments[0]
+    if (!firstSegment) {
+      console.warn('[roof-panel] Add Solar Panel: roof has no segments yet.')
+      return
+    }
+    const solarPanel = SolarPanelNodeSchema.parse({
+      roofSegmentId: firstSegment.id,
+      parentId: firstSegment.id,
+      position: [0, 0, 0],
+    })
+    createNode(solarPanel, firstSegment.id as AnyNodeId)
+    updateNode(firstSegment.id as AnyNode['id'], {
+      children: [...(firstSegment.children ?? []), solarPanel.id],
+    })
+    setSelection({ selectedIds: [solarPanel.id as AnyNode['id']] })
+    sfxEmitter.emit('sfx:structure-build')
+  }, [node, segments, createNode, updateNode, setSelection])
+
+  // Flatten chimneys, skylights, and solar panels hosted by any segment of this roof.
   const chimneys = useScene(
     useShallow((s) => {
       if (!node) return []
@@ -135,6 +157,22 @@ export function RoofPanel() {
         for (const childId of seg.children ?? []) {
           const child = s.nodes[childId as AnyNodeId] as SkylightNode | undefined
           if (child?.type === 'skylight') out.push(child)
+        }
+      }
+      return out
+    }),
+  )
+
+  const solarPanels = useScene(
+    useShallow((s) => {
+      if (!node) return []
+      const out: SolarPanelNode[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = s.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) {
+          const child = s.nodes[childId as AnyNodeId] as SolarPanelNode | undefined
+          if (child?.type === 'solar-panel') out.push(child)
         }
       }
       return out
@@ -234,6 +272,17 @@ export function RoofPanel() {
               <span className="text-muted-foreground text-xs">skylight</span>
             </button>
           ))}
+          {solarPanels.map((panel, i) => (
+            <button
+              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+              key={panel.id}
+              onClick={() => setSelection({ selectedIds: [panel.id as AnyNode['id']] })}
+              type="button"
+            >
+              <span className="truncate">{panel.name || `Solar Panel ${i + 1}`}</span>
+              <span className="text-muted-foreground text-xs">solar panel</span>
+            </button>
+          ))}
         </div>
         <ActionGroup>
           <ActionButton
@@ -247,6 +296,12 @@ export function RoofPanel() {
             icon={<Plus className="h-3.5 w-3.5" />}
             label="Add Skylight"
             onClick={handleAddSkylight}
+          />
+          <ActionButton
+            disabled={segments.length === 0}
+            icon={<Plus className="h-3.5 w-3.5" />}
+            label="Add Solar Panel"
+            onClick={handleAddSolarPanel}
           />
         </ActionGroup>
       </PanelSection>

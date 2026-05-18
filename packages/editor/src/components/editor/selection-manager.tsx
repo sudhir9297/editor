@@ -1148,6 +1148,7 @@ export const SelectionManager = () => {
       'zone',
       'chimney',
       'skylight',
+      'solar-panel',
     ] as const
 
     for (const type of allTypes) {
@@ -1474,6 +1475,7 @@ export const SelectionManager = () => {
       'site',
       'chimney',
       'skylight',
+      'solar-panel',
     ]
     allTypes.forEach((type) => {
       emitter.on(`${type}:enter` as any, onEnter as any)
@@ -1549,6 +1551,7 @@ export const SelectionManager = () => {
       'zone',
       'chimney',
       'skylight',
+      'solar-panel',
     ] as const
 
     for (const type of allTypes) {

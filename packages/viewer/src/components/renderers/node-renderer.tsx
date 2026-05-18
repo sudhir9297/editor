@@ -15,6 +15,7 @@ import { LevelRenderer } from './level/level-renderer'
 import { RoofRenderer } from './roof/roof-renderer'
 import { RoofSegmentRenderer } from './roof-segment/roof-segment-renderer'
 import { ScanRenderer } from './scan/scan-renderer'
+import { SolarPanelRenderer } from './solar-panel/solar-panel-renderer'
 import { SiteRenderer } from './site/site-renderer'
 import { SlabRenderer } from './slab/slab-renderer'
 import { SpawnRenderer } from './spawn/spawn-renderer'
@@ -49,6 +50,7 @@ export const NodeRenderer = ({ nodeId }: { nodeId: AnyNode['id'] }) => {
       {node.type === 'roof-segment' && <RoofSegmentRenderer node={node} />}
       {node.type === 'chimney' && <ChimneyRenderer node={node} />}
       {node.type === 'skylight' && <SkylightRenderer node={node} />}
+      {node.type === 'solar-panel' && <SolarPanelRenderer node={node} />}
       {node.type === 'stair' && <StairRenderer node={node} />}
       {node.type === 'stair-segment' && <StairSegmentRenderer node={node} />}
       {node.type === 'scan' && <ScanRenderer node={node} />}

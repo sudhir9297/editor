@@ -7,6 +7,7 @@ import {
   ChimneyNode,
   ColumnNode,
   SkylightNode,
+  SolarPanelNode,
   DoorNode,
   ElevatorNode,
   FenceNode,
@@ -52,6 +53,7 @@ const ALLOWED_TYPES = [
   'spawn',
   'chimney',
   'skylight',
+  'solar-panel',
 ]
 const DELETE_ONLY_TYPES: string[] = []
 const HOLE_TYPES = ['slab', 'ceiling']
@@ -202,7 +204,8 @@ export function FloatingActionMenu() {
         node.type === 'stair' ||
         node.type === 'stair-segment' ||
         node.type === 'chimney' ||
-        node.type === 'skylight'
+        node.type === 'skylight' ||
+        node.type === 'solar-panel'
       ) {
         setMovingNode(node as any)
       }
@@ -287,6 +290,16 @@ export function FloatingActionMenu() {
             ]
           }
           duplicate = SkylightNode.parse(duplicateInfo)
+        } else if (node.type === 'solar-panel') {
+          duplicateInfo.id = generateId('solarpanel')
+          if (duplicateInfo.position) {
+            duplicateInfo.position = [
+              (duplicateInfo.position[0] ?? 0) + 0.5,
+              0,
+              duplicateInfo.position[2] ?? 0,
+            ]
+          }
+          duplicate = SolarPanelNode.parse(duplicateInfo)
         } else if (node.type === 'door') {
           duplicate = DoorNode.parse(duplicateInfo)
         } else if (node.type === 'window') {
@@ -328,8 +341,8 @@ export function FloatingActionMenu() {
       }
 
       if (duplicate) {
-        if (duplicate.type === 'chimney' || duplicate.type === 'skylight') {
-          const segmentId = duplicate.roofSegmentId as AnyNodeId | undefined
+        if (duplicate.type === 'chimney' || duplicate.type === 'skylight' || duplicate.type === 'solar-panel') {
+          const segmentId = (duplicate as { roofSegmentId?: string }).roofSegmentId as AnyNodeId | undefined
           if (segmentId) {
             useScene.getState().createNode(duplicate, segmentId)
             useScene.getState().dirtyNodes.add(segmentId)
@@ -441,8 +454,8 @@ export function FloatingActionMenu() {
       } else {
         sfxEmitter.emit('sfx:structure-delete')
       }
-      // For a chimney or skylight, also unlink it from its host roof-segment's children.
-      if (node?.type === 'chimney' || node?.type === 'skylight') {
+      // For roof-hosted elements, unlink from host roof-segment's children.
+      if (node?.type === 'chimney' || node?.type === 'skylight' || node?.type === 'solar-panel') {
         const segmentId = (node as { roofSegmentId?: string }).roofSegmentId as
           | AnyNodeId
           | undefined

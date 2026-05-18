@@ -29,6 +29,8 @@ import {
   type SiteNode,
   type SlabEvent,
   type SlabNode,
+  type SolarPanelEvent,
+  type SolarPanelNode,
   type SpawnEvent,
   type SpawnNode,
   type StairEvent,
@@ -66,6 +68,7 @@ type NodeConfig = {
   elevator: { node: ElevatorNode; event: ElevatorEvent }
   chimney: { node: ChimneyNode; event: ChimneyEvent }
   skylight: { node: SkylightNode; event: SkylightEvent }
+  'solar-panel': { node: SolarPanelNode; event: SolarPanelEvent }
 }
 
 type NodeType = keyof NodeConfig

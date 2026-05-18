@@ -32,6 +32,7 @@ export const sceneRegistry = {
     door: new Set<string>(),
     chimney: new Set<string>(),
     skylight: new Set<string>(),
+    'solar-panel': new Set<string>(),
   },
 
   /** Remove all entries. Call when unloading a scene to prevent stale 3D refs. */

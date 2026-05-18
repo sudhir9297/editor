@@ -18,6 +18,7 @@ export type {
   RoofSegmentEvent,
   SiteEvent,
   SlabEvent,
+  SolarPanelEvent,
   SpawnEvent,
   StairEvent,
   StairSegmentEvent,

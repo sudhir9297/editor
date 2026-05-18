@@ -81,10 +81,10 @@ export const RoofSystem = () => {
       const node = nodes[id]
       if (!node) return
 
-      // A chimney or skylight edit dirties its host roof so the merged geometry rebuilds.
-      if (node.type === 'chimney' || node.type === 'skylight') {
-        const seg = node.roofSegmentId
-          ? (nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
+      // A chimney, skylight, or solar-panel edit dirties its host roof so the merged geometry rebuilds.
+      if (node.type === 'chimney' || node.type === 'skylight' || node.type === 'solar-panel') {
+        const seg = (node as { roofSegmentId?: string }).roofSegmentId
+          ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
           : undefined
         if (seg?.parentId) {
           pendingRoofUpdates.add(seg.parentId as AnyNodeId)
