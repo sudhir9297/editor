@@ -31,6 +31,7 @@ export const tools: ToolConfig[] = [
   // { id: 'custom-room', iconSrc: '/icons/custom-room.png', label: 'Custom Room' },
   { id: 'slab', iconSrc: '/icons/floor.png', label: 'Slab' },
   { id: 'ceiling', iconSrc: '/icons/ceiling.png', label: 'Ceiling' },
+  { id: 'chimney', iconSrc: '/icons/roof.png', label: 'Chimney' },
   { id: 'zone', iconSrc: '/icons/zone.png', label: 'Zone' },
   { id: 'spawn', iconSrc: '/icons/site.png', label: 'Spawn Point' },
 ]

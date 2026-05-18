@@ -25,6 +25,7 @@ import { useIsMobile } from '../../../hooks/use-mobile'
 import { sfxEmitter } from '../../../lib/sfx-bus'
 import useEditor from '../../../store/use-editor'
 import { CeilingPanel } from './ceiling-panel'
+import { ChimneyPanel } from './chimney-panel'
 import { ColumnPanel } from './column-panel'
 import { DoorPanel } from './door-panel'
 import { ElevatorPanel } from './elevator-panel'
@@ -112,6 +113,8 @@ function panelForType(type: string | null) {
       return <ElevatorPanel />
     case 'window':
       return <WindowPanel />
+    case 'chimney':
+      return <ChimneyPanel />
     default:
       return null
   }

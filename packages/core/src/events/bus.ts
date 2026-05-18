@@ -4,6 +4,7 @@ import type { Object3D } from 'three'
 import type {
   BuildingNode,
   CeilingNode,
+  ChimneyNode,
   ColumnNode,
   DoorNode,
   ElevatorNode,
@@ -68,6 +69,7 @@ export type StairSegmentEvent = NodeEvent<StairSegmentNode>
 export type WindowEvent = NodeEvent<WindowNode>
 export type DoorEvent = NodeEvent<DoorNode>
 export type ElevatorEvent = NodeEvent<ElevatorNode>
+export type ChimneyEvent = NodeEvent<ChimneyNode>
 
 // Event suffixes - exported for use in hooks
 export const eventSuffixes = [
@@ -198,6 +200,7 @@ type EditorEvents = GridEvents &
   NodeEvents<'stair-segment', StairSegmentEvent> &
   NodeEvents<'window', WindowEvent> &
   NodeEvents<'door', DoorEvent> &
+  NodeEvents<'chimney', ChimneyEvent> &
   CameraControlEvents &
   ToolEvents &
   GuideEvents &

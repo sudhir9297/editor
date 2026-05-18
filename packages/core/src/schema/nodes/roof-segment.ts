@@ -2,6 +2,7 @@ import dedent from 'dedent'
 import { z } from 'zod'
 import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
+import { ChimneyNode } from './chimney'
 
 export const RoofType = z.enum(['hip', 'gable', 'shed', 'gambrel', 'dutch', 'mansard', 'flat'])
 
@@ -12,6 +13,8 @@ export const RoofSegmentNode = BaseNode.extend({
   type: nodeType('roof-segment'),
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
+  // Hosted roof elements (chimneys, and in future skylights, vents, etc.)
+  children: z.array(ChimneyNode.shape.id).default([]),
   position: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
   // Rotation around Y axis in radians
   rotation: z.number().default(0),

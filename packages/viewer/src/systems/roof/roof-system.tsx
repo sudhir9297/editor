@@ -1,6 +1,7 @@
 import {
   type AnyNode,
   type AnyNodeId,
+  type ChimneyNode,
   type RoofNode,
   type RoofSegmentNode,
   type RoofType,
@@ -78,6 +79,18 @@ export const RoofSystem = () => {
     dirtyNodes.forEach((id) => {
       const node = nodes[id]
       if (!node) return
+
+      // A chimney edit dirties its host roof so the merged geometry rebuilds.
+      if (node.type === 'chimney') {
+        const seg = node.roofSegmentId
+          ? (nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
+          : undefined
+        if (seg?.parentId) {
+          pendingRoofUpdates.add(seg.parentId as AnyNodeId)
+        }
+        clearDirty(id as AnyNodeId)
+        return
+      }
 
       if (node.type === 'roof-segment') {
         const mesh = sceneRegistry.nodes.get(id) as THREE.Mesh
@@ -202,6 +215,43 @@ function updateMergedRoofGeometry(
       csgGeometry(brush).applyMatrix4(_matrix)
       brush.updateMatrixWorld()
     }
+
+    // --- Chimney cutouts (segment-local) ---
+    // Subtract each hosted chimney's vertical cut brush from the segment's
+    // shinSlab, deckSlab, and wallBrush before they merge into the totals.
+    let workingShin = brushes.shinSlab
+    let workingDeck = brushes.deckSlab
+    let workingWall = brushes.wallBrush
+    for (const chimneyId of child.children ?? []) {
+      const chimney = nodes[chimneyId as AnyNodeId] as ChimneyNode | undefined
+      if (!chimney) continue
+      const cut = buildChimneyCutBrush(chimney, child)
+      if (!cut) continue
+
+      try {
+        const nextShin = csgEvaluator.evaluate(workingShin, cut, SUBTRACTION) as Brush
+        workingShin.geometry.dispose()
+        prepareBrushForCSG(nextShin)
+        workingShin = nextShin
+
+        const nextDeck = csgEvaluator.evaluate(workingDeck, cut, SUBTRACTION) as Brush
+        workingDeck.geometry.dispose()
+        prepareBrushForCSG(nextDeck)
+        workingDeck = nextDeck
+
+        const nextWall = csgEvaluator.evaluate(workingWall, cut, SUBTRACTION) as Brush
+        workingWall.geometry.dispose()
+        prepareBrushForCSG(nextWall)
+        workingWall = nextWall
+      } catch (e) {
+        console.error('Chimney CSG cut failed:', e)
+      } finally {
+        cut.geometry.dispose()
+      }
+    }
+    brushes.shinSlab = workingShin
+    brushes.deckSlab = workingDeck
+    brushes.wallBrush = workingWall
 
     applyTransform(brushes.shinSlab)
     applyTransform(brushes.deckSlab)
@@ -1087,6 +1137,37 @@ function pushRoofUv(uvs: number[], point: THREE.Vector3, normal: THREE.Vector3) 
   }
 
   uvs.push(_uvFaceNormal.z >= 0 ? point.x : -point.x, -point.y)
+}
+
+/**
+ * Build a vertical cut brush for a chimney in its host segment's local space.
+ * The brush spans from below the deck to above the chimney top so subtraction
+ * passes cleanly through every roof slab layer.
+ */
+function buildChimneyCutBrush(
+  chimney: ChimneyNode,
+  segment: RoofSegmentNode,
+): Brush | null {
+  const inflate = 0.02
+  const w = Math.max(0.05, chimney.width + 2 * inflate)
+  const d = Math.max(0.05, chimney.depth + 2 * inflate)
+  const peakY =
+    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
+  const topY = peakY + chimney.heightAboveRidge + 0.05
+  const baseY = -0.5
+  const h = topY - baseY
+  const centerY = (topY + baseY) / 2
+
+  const geo = new THREE.BoxGeometry(w, h, d)
+  if (Math.abs(chimney.rotation) > 1e-4) {
+    geo.rotateY(chimney.rotation)
+  }
+  geo.translate(chimney.position[0], centerY, chimney.position[2])
+
+  computeGeometryBoundsTree(geo)
+  const brush = new Brush(geo, dummyMats)
+  brush.updateMatrixWorld()
+  return brush
 }
 
 function ensureUv2Attribute(geometry: THREE.BufferGeometry) {

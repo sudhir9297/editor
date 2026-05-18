@@ -1,4 +1,10 @@
-import { type RoofNode, useRegistry, useScene } from '@pascal-app/core'
+import {
+  type AnyNodeId,
+  type RoofNode,
+  type RoofSegmentNode,
+  useRegistry,
+  useScene,
+} from '@pascal-app/core'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useNodeEvents } from '../../../hooks/use-node-events'
@@ -17,6 +23,19 @@ export const RoofRenderer = ({ node }: { node: RoofNode }) => {
 
   const handlers = useNodeEvents(node, 'roof')
   const debugColors = useViewer((s) => s.debugColors)
+
+  // Collect chimney IDs hosted by any segment of this roof. Rendered outside
+  // segments-wrapper (which is invisible during normal mode) so chimneys stay
+  // visible at all times.
+  const chimneyIds = useScene((state) => {
+    const ids: AnyNodeId[] = []
+    for (const segmentId of node.children ?? []) {
+      const seg = state.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+      if (!seg) continue
+      for (const childId of seg.children ?? []) ids.push(childId as AnyNodeId)
+    }
+    return ids
+  })
   const placeholderGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3))
@@ -54,6 +73,11 @@ export const RoofRenderer = ({ node }: { node: RoofNode }) => {
       />
       <group name="segments-wrapper" visible={false}>
         {(node.children ?? []).map((childId) => (
+          <NodeRenderer key={childId} nodeId={childId} />
+        ))}
+      </group>
+      <group name="roof-elements">
+        {chimneyIds.map((childId) => (
           <NodeRenderer key={childId} nodeId={childId} />
         ))}
       </group>
