@@ -14,7 +14,7 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ADDITION, Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg'
 import { computeBoundsTree } from 'three-mesh-bvh'
 
-function csgGeometry(brush: Brush): THREE.BufferGeometry {
+export function csgGeometry(brush: Brush): THREE.BufferGeometry {
   return brush.geometry as unknown as THREE.BufferGeometry
 }
 
@@ -23,7 +23,7 @@ function csgMaterials(brush: Brush): THREE.Material[] {
   return Array.isArray(mat) ? mat : [mat]
 }
 
-const csgEvaluator = new Evaluator()
+export const csgEvaluator = new Evaluator()
 csgEvaluator.useGroups = true
 ;(csgEvaluator as any).consolidateGroups = false // shared dummyMats across brushes causes consolidation to misalign groupIndices vs groupOrder indices → crash
 csgEvaluator.attributes = ['position', 'normal', 'uv']
@@ -33,7 +33,7 @@ function computeGeometryBoundsTree(geometry: THREE.BufferGeometry) {
   ;(geometry as any).computeBoundsTree({ maxLeafSize: 10 })
 }
 
-function prepareBrushForCSG(brush: Brush) {
+export function prepareBrushForCSG(brush: Brush) {
   computeGeometryBoundsTree(brush.geometry)
   brush.updateMatrixWorld()
 }
@@ -204,6 +204,9 @@ function updateMergedRoofGeometry(
   for (const child of children) {
     const brushes = getRoofSegmentBrushes(child)
     if (!brushes) continue
+    // shinTopBrush is only used by the chimney renderer for trim CSG; not
+    // needed for merged-roof composition. Dispose immediately to free GPU memory.
+    brushes.shinTopBrush.geometry.dispose()
 
     _matrix.compose(
       _position.set(child.position[0], child.position[1], child.position[2]),
@@ -384,7 +387,13 @@ const RAKE_FACE_ALIGNMENT_EPSILON = 0.35
  */
 export function getRoofSegmentBrushes(
   node: RoofSegmentNode,
-): { deckSlab: Brush; shinSlab: Brush; wallBrush: Brush; innerBrush: Brush } | null {
+): {
+  deckSlab: Brush
+  shinSlab: Brush
+  wallBrush: Brush
+  innerBrush: Brush
+  shinTopBrush: Brush
+} | null {
   const {
     roofType,
     width,
@@ -644,10 +653,9 @@ export function getRoofSegmentBrushes(
 
       deckTopBrush.geometry.dispose()
       deckBotBrush.geometry.dispose()
-      shinTopBrush.geometry.dispose()
       shinBotBrush.geometry.dispose()
 
-      return { deckSlab, shinSlab, wallBrush, innerBrush }
+      return { deckSlab, shinSlab, wallBrush, innerBrush, shinTopBrush }
     } catch (e) {
       console.error('CSG prep failed:', e)
     }
@@ -710,6 +718,7 @@ export function generateRoofSegmentGeometry(node: RoofSegmentNode): THREE.Buffer
   shinSlab.geometry.dispose()
   wallBrush.geometry.dispose()
   innerBrush.geometry.dispose()
+  brushes.shinTopBrush.geometry.dispose()
 
   resultGeo.computeVertexNormals()
   ensureUv2Attribute(resultGeo)
@@ -1144,13 +1153,14 @@ function pushRoofUv(uvs: number[], point: THREE.Vector3, normal: THREE.Vector3) 
  * The brush spans from below the deck to above the chimney top so subtraction
  * passes cleanly through every roof slab layer.
  */
-function buildChimneyCutBrush(
+export function buildChimneyCutBrush(
   chimney: ChimneyNode,
   segment: RoofSegmentNode,
 ): Brush | null {
-  const inflate = 0.02
+  const inflate = Math.max(0, chimney.cutoutOffset ?? 0.02)
+  const isRound = (chimney.bodyShape ?? 'square') === 'round'
   const w = Math.max(0.05, chimney.width + 2 * inflate)
-  const d = Math.max(0.05, chimney.depth + 2 * inflate)
+  const d = isRound ? w : Math.max(0.05, chimney.depth + 2 * inflate)
   const peakY =
     segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
   const topY = peakY + chimney.heightAboveRidge + 0.05
@@ -1158,7 +1168,9 @@ function buildChimneyCutBrush(
   const h = topY - baseY
   const centerY = (topY + baseY) / 2
 
-  const geo = new THREE.BoxGeometry(w, h, d)
+  const geo = isRound
+    ? new THREE.CylinderGeometry(w / 2, w / 2, h, 24, 1, false)
+    : new THREE.BoxGeometry(w, h, d)
   if (Math.abs(chimney.rotation) > 1e-4) {
     geo.rotateY(chimney.rotation)
   }

@@ -2,6 +2,7 @@
 
 import {
   type CeilingNode,
+  type ChimneyNode,
   type ColumnNode,
   type FenceNode,
   getCatalogMaterialById,
@@ -22,7 +23,7 @@ import {
 
 export type PaintableMaterialTarget = Extract<
   MaterialTarget,
-  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling'
+  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling' | 'chimney'
 >
 
 export type SingleSurfaceMaterialRole = 'surface'
@@ -133,7 +134,7 @@ export function buildStairSurfaceMaterialPatch(
 }
 
 export function buildSingleSurfaceMaterialPatch<
-  TNode extends FenceNode | ColumnNode | SlabNode | CeilingNode,
+  TNode extends FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode,
 >(material: MaterialSchema | undefined, materialPreset: string | undefined): Partial<TNode> {
   return {
     material,
@@ -222,7 +223,8 @@ export function resolveActivePaintMaterialFromSelection(params: {
     (selectedNode.type === 'fence' ||
       selectedNode.type === 'column' ||
       selectedNode.type === 'slab' ||
-      selectedNode.type === 'ceiling') &&
+      selectedNode.type === 'ceiling' ||
+      selectedNode.type === 'chimney') &&
     selectedMaterialTarget.role === 'surface'
   ) {
     const target = selectedNode.type
@@ -278,6 +280,10 @@ export function resolvePaintTargetFromSelection(params: {
 
   if (selectedNode.type === 'ceiling') {
     return 'ceiling'
+  }
+
+  if (selectedNode.type === 'chimney') {
+    return 'chimney'
   }
 
   return null

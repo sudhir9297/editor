@@ -3,6 +3,7 @@ import {
   type AnyNodeId,
   type BuildingNode,
   type CeilingNode,
+  type ChimneyNode,
   type ColumnNode,
   emitter,
   type FenceNode,
@@ -338,7 +339,7 @@ function applyStairPaintPreview(
 }
 
 function applySingleSurfacePaintPreview(
-  node: FenceNode | ColumnNode | SlabNode | CeilingNode,
+  node: FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode,
   material: ActivePaintMaterial,
 ): PaintPreviewCleanup | null {
   if (node.type === 'ceiling') {
@@ -389,7 +390,7 @@ function applySingleSurfacePaintPreview(
   const previewMaterial = getSingleSurfacePreviewMaterial(material)
   if (!previewMaterial) return null
 
-  if (node.type === 'column') {
+  if (node.type === 'column' || node.type === 'chimney') {
     if (!registeredObject) return null
     const restores: PaintPreviewCleanup[] = []
 
@@ -899,7 +900,8 @@ export const SelectionManager = () => {
         node.type === 'fence' ||
         node.type === 'column' ||
         node.type === 'slab' ||
-        node.type === 'ceiling'
+        node.type === 'ceiling' ||
+        node.type === 'chimney'
       ) {
         const compatible = hasActivePaintMaterial(activePaintMaterial)
 
@@ -914,7 +916,7 @@ export const SelectionManager = () => {
                   .updateNode(
                     node.id as AnyNodeId,
                     buildSingleSurfaceMaterialPatch<
-                      FenceNode | ColumnNode | SlabNode | CeilingNode
+                      FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode
                     >(activePaintMaterial.material, activePaintMaterial.materialPreset),
                   )
               }
@@ -922,7 +924,7 @@ export const SelectionManager = () => {
           preview: compatible
             ? () =>
                 applySingleSurfacePaintPreview(
-                  node as FenceNode | ColumnNode | SlabNode | CeilingNode,
+                  node as FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode,
                   activePaintMaterial,
                 )
             : () => previewCursor('not-allowed'),
@@ -1015,6 +1017,7 @@ export const SelectionManager = () => {
       'window',
       'door',
       'zone',
+      'chimney',
     ] as const
 
     for (const type of allTypes) {
@@ -1339,6 +1342,7 @@ export const SelectionManager = () => {
       'door',
       'zone',
       'site',
+      'chimney',
     ]
     allTypes.forEach((type) => {
       emitter.on(`${type}:enter` as any, onEnter as any)
@@ -1412,6 +1416,7 @@ export const SelectionManager = () => {
       'window',
       'door',
       'zone',
+      'chimney',
     ] as const
 
     for (const type of allTypes) {
