@@ -3,11 +3,18 @@ import { z } from 'zod'
 import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
 
+export const ChimneyMaterialRole = z.enum(['surface', 'top'])
+export type ChimneyMaterialRole = z.infer<typeof ChimneyMaterialRole>
+
 export const ChimneyNode = BaseNode.extend({
   id: objectId('chimney'),
   type: nodeType('chimney'),
+  // Main / body material — used by body, bands, flues, cricket.
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
+  // Top material — applied to the cap. Falls back to `material` if unset.
+  topMaterial: MaterialSchema.optional(),
+  topMaterialPreset: z.string().optional(),
 
   // Host: the RoofSegmentNode this chimney is attached to.
   // Stored as a plain string id (mirrors WindowNode.wallId) to avoid
@@ -34,7 +41,7 @@ export const ChimneyNode = BaseNode.extend({
   heightAboveRidge: z.number().default(1.0),
   // How far the roof cutout extends beyond the chimney footprint on each side.
   // Larger values create a wider visible gap between the chimney and the roof.
-  cutoutOffset: z.number().default(0.02),
+  cutoutOffset: z.number().default(0),
 
   // ---- Cap ----
   // Concrete cap on top of the masonry stack; oversized to shed water.

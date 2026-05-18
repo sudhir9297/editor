@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import useEditor from '../../../../../store/use-editor'
 import { InlineRenameInput } from './inline-rename-input'
-import { focusTreeNode, handleTreeSelection, TreeNodeWrapper } from './tree-node'
+import { focusTreeNode, handleTreeSelection, TreeNode, TreeNodeWrapper } from './tree-node'
 import { TreeNodeActions } from './tree-node-actions'
 import { DropIndicatorLine, useTreeNodeDrag } from './tree-node-drag'
 
@@ -163,11 +163,24 @@ function RoofSegmentTreeNode({
   isLast?: boolean
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const isSelected = useViewer((state) => state.selection.selectedIds.includes(node.id))
   const isHovered = useViewer((state) => state.hoveredId === node.id)
   const setSelection = useViewer((state) => state.setSelection)
   const setHoveredId = useViewer((state) => state.setHoveredId)
   const { startDrag, isDragging } = useTreeNodeDrag()
+
+  // Roof element ids (chimneys, skylights, etc.) hosted by this segment.
+  const roofElementIds = useScene(
+    useShallow((s) => {
+      const seg = s.nodes[node.id as AnyNodeId] as RoofSegmentNode | undefined
+      if (!seg) return [] as string[]
+      return (seg.children ?? []).filter((childId) => {
+        const t = s.nodes[childId as AnyNodeId]?.type
+        return t === 'chimney' || t === 'skylight'
+      })
+    }),
+  )
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -197,8 +210,8 @@ function RoofSegmentTreeNode({
       <TreeNodeWrapper
         actions={<TreeNodeActions nodeId={node.id} />}
         depth={depth}
-        expanded={false}
-        hasChildren={false}
+        expanded={expanded}
+        hasChildren={roofElementIds.length > 0}
         icon={
           <Image
             alt=""
@@ -228,8 +241,17 @@ function RoofSegmentTreeNode({
         onMouseEnter={() => setHoveredId(node.id)}
         onMouseLeave={() => setHoveredId(null)}
         onPointerDown={handlePointerDown}
-        onToggle={() => {}}
-      />
+        onToggle={() => setExpanded((v) => !v)}
+      >
+        {roofElementIds.map((childId, index) => (
+          <TreeNode
+            depth={depth + 1}
+            isLast={index === roofElementIds.length - 1}
+            key={childId}
+            nodeId={childId as AnyNodeId}
+          />
+        ))}
+      </TreeNodeWrapper>
     </div>
   )
 }

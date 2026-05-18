@@ -3,7 +3,10 @@ import {
   type AnyNodeId,
   type BuildingNode,
   type CeilingNode,
+  type ChimneyMaterialRole,
   type ChimneyNode,
+  type SkylightMaterialRole,
+  type SkylightNode,
   type ColumnNode,
   emitter,
   type FenceNode,
@@ -41,6 +44,8 @@ import { useCallback, useEffect, useRef } from 'react'
 import { type BufferGeometry, Color, type Material, type Mesh, type Object3D } from 'three'
 import {
   type ActivePaintMaterial,
+  buildChimneyMaterialPatch,
+  buildSkylightMaterialPatch,
   buildRoofSurfaceMaterialPatch,
   buildSingleSurfaceMaterialPatch,
   buildStairSurfaceMaterialPatch,
@@ -338,8 +343,71 @@ function applyStairPaintPreview(
   }
 }
 
+function applySkylightPaintPreview(
+  node: SkylightNode,
+  role: SkylightMaterialRole,
+  material: ActivePaintMaterial,
+): PaintPreviewCleanup | null {
+  const root = getRegisteredNodeObject(node.id)
+  if (!root) return null
+  const previewMaterial = getSingleSurfacePreviewMaterial(material)
+  if (!previewMaterial) return null
+  const restores: PaintPreviewCleanup[] = []
+  root.traverse((object) => {
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return
+    const isGlass = mesh.name === 'skylight-glass'
+    const isFrame = mesh.name === 'skylight-surface'
+    if ((role === 'glass' && isGlass) || (role === 'frame' && isFrame)) {
+      restores.push(previewMeshMaterial(mesh, previewMaterial))
+    }
+  })
+  if (restores.length === 0) return null
+  return () => {
+    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]?.()
+  }
+}
+
+function applyChimneyPaintPreview(
+  node: ChimneyNode,
+  role: ChimneyMaterialRole,
+  material: ActivePaintMaterial,
+): PaintPreviewCleanup | null {
+  const root = getRegisteredNodeObject(node.id)
+  if (!root) return null
+  const previewMaterial = getSingleSurfacePreviewMaterial(material)
+  if (!previewMaterial) return null
+  // For meshes with a material array, swap only the entry matching the role
+  // ([0] = surface, [1] = top); for single-material meshes, only swap when
+  // role is 'surface'.
+  const restores: PaintPreviewCleanup[] = []
+  root.traverse((object) => {
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return
+    const current = mesh.material as Material | Material[]
+    if (Array.isArray(current)) {
+      const idx = role === 'top' ? 1 : 0
+      const previousAtIdx = current[idx]
+      if (!previousAtIdx) return
+      const previousArray = [...current]
+      const nextArray = [...current]
+      nextArray[idx] = previewMaterial
+      mesh.material = nextArray
+      restores.push(() => {
+        mesh.material = previousArray
+      })
+    } else if (role === 'surface') {
+      restores.push(previewMeshMaterial(mesh, previewMaterial))
+    }
+  })
+  if (restores.length === 0) return null
+  return () => {
+    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]?.()
+  }
+}
+
 function applySingleSurfacePaintPreview(
-  node: FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode,
+  node: FenceNode | ColumnNode | SlabNode | CeilingNode,
   material: ActivePaintMaterial,
 ): PaintPreviewCleanup | null {
   if (node.type === 'ceiling') {
@@ -390,7 +458,7 @@ function applySingleSurfacePaintPreview(
   const previewMaterial = getSingleSurfacePreviewMaterial(material)
   if (!previewMaterial) return null
 
-  if (node.type === 'column' || node.type === 'chimney') {
+  if (node.type === 'column') {
     if (!registeredObject) return null
     const restores: PaintPreviewCleanup[] = []
 
@@ -896,12 +964,72 @@ export const SelectionManager = () => {
         }
       }
 
+      if (node.type === 'chimney') {
+        const compatible = hasActivePaintMaterial(activePaintMaterial)
+        const materialIndex = getIntersectionMaterialIndex(
+          getEventObject(event as NodeEvent),
+          (event as NodeEvent).faceIndex,
+        )
+        const role: ChimneyMaterialRole = materialIndex === 1 ? 'top' : 'surface'
+        return {
+          key: `chimney:${node.id}:${role}`,
+          hoveredId: node.id as AnyNodeId,
+          hoverMode: compatible ? 'paint-ready' : 'paint-disabled',
+          apply: compatible
+            ? () => {
+                useScene
+                  .getState()
+                  .updateNode(
+                    node.id as AnyNodeId,
+                    buildChimneyMaterialPatch(
+                      role,
+                      activePaintMaterial.material,
+                      activePaintMaterial.materialPreset,
+                    ),
+                  )
+              }
+            : null,
+          preview: compatible
+            ? () =>
+                applyChimneyPaintPreview(node as ChimneyNode, role, activePaintMaterial)
+            : () => previewCursor('not-allowed'),
+        }
+      }
+
+      if (node.type === 'skylight') {
+        const compatible = hasActivePaintMaterial(activePaintMaterial)
+        const meshName = getEventObject(event as NodeEvent)?.name ?? ''
+        const role: SkylightMaterialRole = meshName === 'skylight-glass' ? 'glass' : 'frame'
+        return {
+          key: `skylight:${node.id}:${role}`,
+          hoveredId: node.id as AnyNodeId,
+          hoverMode: compatible ? 'paint-ready' : 'paint-disabled',
+          apply: compatible
+            ? () => {
+                useScene
+                  .getState()
+                  .updateNode(
+                    node.id as AnyNodeId,
+                    buildSkylightMaterialPatch(
+                      role,
+                      activePaintMaterial.material,
+                      activePaintMaterial.materialPreset,
+                    ),
+                  )
+              }
+            : null,
+          preview: compatible
+            ? () =>
+                applySkylightPaintPreview(node as SkylightNode, role, activePaintMaterial)
+            : () => previewCursor('not-allowed'),
+        }
+      }
+
       if (
         node.type === 'fence' ||
         node.type === 'column' ||
         node.type === 'slab' ||
-        node.type === 'ceiling' ||
-        node.type === 'chimney'
+        node.type === 'ceiling'
       ) {
         const compatible = hasActivePaintMaterial(activePaintMaterial)
 
@@ -916,7 +1044,7 @@ export const SelectionManager = () => {
                   .updateNode(
                     node.id as AnyNodeId,
                     buildSingleSurfaceMaterialPatch<
-                      FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode
+                      FenceNode | ColumnNode | SlabNode | CeilingNode
                     >(activePaintMaterial.material, activePaintMaterial.materialPreset),
                   )
               }
@@ -924,7 +1052,7 @@ export const SelectionManager = () => {
           preview: compatible
             ? () =>
                 applySingleSurfacePaintPreview(
-                  node as FenceNode | ColumnNode | SlabNode | CeilingNode | ChimneyNode,
+                  node as FenceNode | ColumnNode | SlabNode | CeilingNode,
                   activePaintMaterial,
                 )
             : () => previewCursor('not-allowed'),

@@ -4,12 +4,15 @@ import {
   type AnyNode,
   type AnyNodeId,
   type CeilingNode,
+  ChimneyNode,
+  SkylightNode,
   ColumnNode,
   DoorNode,
   ElevatorNode,
   FenceNode,
   generateId,
   ItemNode,
+  type RoofSegmentNode as RoofSegmentNodeType,
   RoofSegmentNode,
   type SlabNode,
   SpawnNode,
@@ -47,6 +50,8 @@ const ALLOWED_TYPES = [
   'slab',
   'ceiling',
   'spawn',
+  'chimney',
+  'skylight',
 ]
 const DELETE_ONLY_TYPES: string[] = []
 const HOLE_TYPES = ['slab', 'ceiling']
@@ -195,7 +200,9 @@ export function FloatingActionMenu() {
         node.type === 'roof' ||
         node.type === 'roof-segment' ||
         node.type === 'stair' ||
-        node.type === 'stair-segment'
+        node.type === 'stair-segment' ||
+        node.type === 'chimney' ||
+        node.type === 'skylight'
       ) {
         setMovingNode(node as any)
       }
@@ -260,7 +267,27 @@ export function FloatingActionMenu() {
 
       let duplicate: AnyNode | null = null
       try {
-        if (node.type === 'door') {
+        if (node.type === 'chimney') {
+          duplicateInfo.id = generateId('chimney')
+          if (duplicateInfo.position) {
+            duplicateInfo.position = [
+              (duplicateInfo.position[0] ?? 0) + 0.5,
+              0,
+              duplicateInfo.position[2] ?? 0,
+            ]
+          }
+          duplicate = ChimneyNode.parse(duplicateInfo)
+        } else if (node.type === 'skylight') {
+          duplicateInfo.id = generateId('skylight')
+          if (duplicateInfo.position) {
+            duplicateInfo.position = [
+              (duplicateInfo.position[0] ?? 0) + 0.5,
+              0,
+              duplicateInfo.position[2] ?? 0,
+            ]
+          }
+          duplicate = SkylightNode.parse(duplicateInfo)
+        } else if (node.type === 'door') {
           duplicate = DoorNode.parse(duplicateInfo)
         } else if (node.type === 'window') {
           duplicate = WindowNode.parse(duplicateInfo)
@@ -301,6 +328,17 @@ export function FloatingActionMenu() {
       }
 
       if (duplicate) {
+        if (duplicate.type === 'chimney' || duplicate.type === 'skylight') {
+          const segmentId = duplicate.roofSegmentId as AnyNodeId | undefined
+          if (segmentId) {
+            useScene.getState().createNode(duplicate, segmentId)
+            useScene.getState().dirtyNodes.add(segmentId)
+          }
+          useScene.temporal.getState().resume()
+          setMovingNode(duplicate as any)
+          setSelection({ selectedIds: [] })
+          return
+        }
         if (
           duplicate.type === 'door' ||
           duplicate.type === 'window' ||
@@ -403,10 +441,26 @@ export function FloatingActionMenu() {
       } else {
         sfxEmitter.emit('sfx:structure-delete')
       }
+      // For a chimney or skylight, also unlink it from its host roof-segment's children.
+      if (node?.type === 'chimney' || node?.type === 'skylight') {
+        const segmentId = (node as { roofSegmentId?: string }).roofSegmentId as
+          | AnyNodeId
+          | undefined
+        if (segmentId) {
+          const state = useScene.getState()
+          const segment = state.nodes[segmentId] as RoofSegmentNodeType | undefined
+          if (segment) {
+            state.updateNode(segmentId, {
+              children: (segment.children ?? []).filter((id) => id !== selectedId),
+            })
+            state.dirtyNodes.add(segmentId)
+          }
+        }
+      }
       setSelection({ selectedIds: [] })
       useScene.getState().deleteNode(selectedId as AnyNodeId)
     },
-    [node?.type, selectedId, setSelection],
+    [node, selectedId, setSelection],
   )
 
   if (

@@ -25,10 +25,10 @@ export const RoofRenderer = ({ node }: { node: RoofNode }) => {
   const handlers = useNodeEvents(node, 'roof')
   const debugColors = useViewer((s) => s.debugColors)
 
-  // Collect chimney IDs hosted by any segment of this roof. Rendered outside
-  // segments-wrapper (which is invisible during normal mode) so chimneys stay
-  // visible at all times.
-  const chimneyIds = useScene(
+  // Collect roof element IDs (chimneys, skylights, etc.) hosted by any segment.
+  // Rendered outside segments-wrapper (invisible during normal mode) so elements
+  // stay visible at all times.
+  const roofElementIds = useScene(
     useShallow((state) => {
       const ids: AnyNodeId[] = []
       for (const segmentId of node.children ?? []) {
@@ -80,7 +80,7 @@ export const RoofRenderer = ({ node }: { node: RoofNode }) => {
         ))}
       </group>
       <group name="roof-elements">
-        {chimneyIds.map((childId) => (
+        {roofElementIds.map((childId) => (
           <NodeRenderer key={childId} nodeId={childId} />
         ))}
       </group>

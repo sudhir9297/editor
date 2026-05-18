@@ -5,6 +5,7 @@ export type {
   CeilingEvent,
   ChimneyEvent,
   ColumnEvent,
+  SkylightEvent,
   DoorEvent,
   ElevatorEvent,
   EventSuffix,

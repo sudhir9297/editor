@@ -56,6 +56,8 @@ export function focusTreeNode(nodeId: AnyNodeId) {
 import { cn } from '../../../../../lib/utils'
 import { BuildingTreeNode } from './building-tree-node'
 import { CeilingTreeNode } from './ceiling-tree-node'
+import { ChimneyTreeNode } from './chimney-tree-node'
+import { SkylightTreeNode } from './skylight-tree-node'
 import { ColumnTreeNode } from './column-tree-node'
 import { DoorTreeNode } from './door-tree-node'
 import { ElevatorTreeNode } from './elevator-tree-node'
@@ -112,6 +114,10 @@ export const TreeNode = memo(function TreeNode({ nodeId, depth = 0, isLast }: Tr
       return <DoorTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
     case 'window':
       return <WindowTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
+    case 'chimney':
+      return <ChimneyTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
+    case 'skylight':
+      return <SkylightTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
     case 'zone':
       return <ZoneTreeNode depth={depth} isLast={isLast} nodeId={nodeId as `zone_${string}`} />
     default:

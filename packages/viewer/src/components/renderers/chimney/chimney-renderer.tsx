@@ -28,6 +28,54 @@ const defaultMaterial = new MeshStandardNodeMaterial({
   metalness: 0,
 })
 
+// Re-arranges the indices of a CSG-trimmed buffer geometry so triangles that
+// face up AND are at the topmost Y plane end up in material group 1, all
+// other triangles in group 0. Used to split the visible top face out as a
+// separate material target (cap or body top).
+function partitionTopFaceGroups(geo: THREE.BufferGeometry, topYMin: number) {
+  const positions = geo.getAttribute('position')
+  let normals = geo.getAttribute('normal')
+  if (!normals) {
+    geo.computeVertexNormals()
+    normals = geo.getAttribute('normal')
+  }
+  const index = geo.getIndex()
+  if (!(positions && normals && index)) {
+    geo.clearGroups()
+    geo.addGroup(0, index?.count ?? positions.count, 0)
+    return
+  }
+
+  const idxArr = index.array as ArrayLike<number>
+  const topTris: number[] = []
+  const otherTris: number[] = []
+  const yEps = 0.02
+
+  for (let i = 0; i < idxArr.length; i += 3) {
+    const a = idxArr[i] as number
+    const b = idxArr[i + 1] as number
+    const c = idxArr[i + 2] as number
+    const ny = (normals.getY(a) + normals.getY(b) + normals.getY(c)) / 3
+    const py = (positions.getY(a) + positions.getY(b) + positions.getY(c)) / 3
+    if (ny > 0.95 && py >= topYMin - yEps) {
+      topTris.push(a, b, c)
+    } else {
+      otherTris.push(a, b, c)
+    }
+  }
+
+  const total = otherTris.length + topTris.length
+  const useUint32 = (positions.count ?? 0) > 0xff_ff
+  const newArr = useUint32 ? new Uint32Array(total) : new Uint16Array(total)
+  for (let i = 0; i < otherTris.length; i++) newArr[i] = otherTris[i] as number
+  for (let i = 0; i < topTris.length; i++) newArr[otherTris.length + i] = topTris[i] as number
+  geo.setIndex(new THREE.BufferAttribute(newArr, 1))
+
+  geo.clearGroups()
+  if (otherTris.length > 0) geo.addGroup(0, otherTris.length, 0)
+  if (topTris.length > 0) geo.addGroup(otherTris.length, topTris.length, 1)
+}
+
 // Build a single slab (box) with planar UVs and write its triangles into the
 // shared positions/uvs arrays. `halfWB/halfDB` = bottom half-extents,
 // `halfWT/halfDT` = top half-extents (smaller = sloped sides).
@@ -317,6 +365,10 @@ function buildCapGeometry(node: ChimneyNode, segment: RoofSegmentNode): THREE.Bu
   if (Math.abs(node.rotation) > 1e-4) geo.rotateY(node.rotation)
   geo.translate(node.position[0], baseY, node.position[2])
   geo.computeVertexNormals()
+  // Cap top face (highest Y plane) becomes material group 1 ("top"), the rest
+  // (sides + bottom + hole walls) is group 0 ("surface").
+  const capTopAbsolute = baseY + t
+  partitionTopFaceGroups(geo, capTopAbsolute - 0.005)
   return geo
 }
 
@@ -411,6 +463,10 @@ function buildFluesGeometry(
   if (Math.abs(node.rotation) > 1e-4) merged.rotateY(node.rotation)
   merged.translate(node.position[0], 0, node.position[2])
   merged.computeVertexNormals()
+  // Split each flue's top face out as group 1 ("top"), other faces stay
+  // group 0 ("surface").
+  const flueTopAbsolute = capTopY + h
+  partitionTopFaceGroups(merged, flueTopAbsolute - 0.005)
   return merged
 }
 
@@ -913,6 +969,10 @@ function buildChimneyGeometry(
       current = next
     }
     bodyResult = trimWithRoof(current)
+    // Split the body's TOP face into material group 1 so it can take its own
+    // "top" material. Filter by Y position so only the actual chimney top
+    // face is captured (shoulder/cricket/band tops fall below).
+    partitionTopFaceGroups(bodyResult, topY - 0.05)
     if (current !== chimneyBrush) intermediates.push(current)
     for (const b of intermediates) b.geometry.dispose()
 
@@ -949,13 +1009,30 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
   const handlers = useNodeEvents(storeNode, 'chimney')
 
   // Slider drags write into useLiveNodeOverrides for live preview without
-  // touching the scene store (avoids dirtying the roof and triggering its
-  // expensive rebuild on every drag tick). Commit clears the override.
+  // touching the scene store. We split the overrides into two paths:
+  //  • position/rotation are applied as a nested-group transform (no CSG
+  //    rebuild needed — moves live during drag)
+  //  • everything else flows into geometry rebuilds as before
   const liveOverrides = useLiveNodeOverrides((state) => state.get(storeNode.id))
   const node = useMemo(
     () => (liveOverrides ? ({ ...storeNode, ...liveOverrides } as ChimneyNode) : storeNode),
     [storeNode, liveOverrides],
   )
+
+  // Geometry-time node — position/rotation taken from the committed store so
+  // CSG only re-runs when those land in the store (on slider release).
+  const geometryNode = useMemo(() => {
+    if (!liveOverrides) return storeNode
+    const rest = { ...(liveOverrides as Record<string, unknown>) }
+    delete rest.position
+    delete rest.rotation
+    return { ...storeNode, ...rest } as ChimneyNode
+  }, [storeNode, liveOverrides])
+
+  // Preview deltas — used to translate/rotate the chimney group live.
+  const liveDeltaX = (node.position[0] ?? 0) - (storeNode.position[0] ?? 0)
+  const liveDeltaZ = (node.position[2] ?? 0) - (storeNode.position[2] ?? 0)
+  const liveDeltaRot = (node.rotation ?? 0) - (storeNode.rotation ?? 0)
 
   const segment = useScene((state) =>
     node.roofSegmentId
@@ -965,7 +1042,7 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
 
   const geometry = useMemo(() => {
     if (!segment) return null
-    return buildChimneyGeometry(node, segment)
+    return buildChimneyGeometry(geometryNode, segment)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     segment?.position[0],
@@ -981,9 +1058,9 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
     segment?.deckThickness,
     segment?.overhang,
     segment?.shingleThickness,
-    node.position[0],
-    node.position[2],
-    node.rotation,
+    geometryNode.position[0],
+    geometryNode.position[2],
+    geometryNode.rotation,
     node.width,
     node.depth,
     node.heightAboveRidge,
@@ -1017,15 +1094,15 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
     if (!segment) return null
     if (!(node.cap ?? true)) return null
     if ((node.capShape ?? 'sloped') === 'none') return null
-    return buildCapGeometry(node, segment)
+    return buildCapGeometry(geometryNode, segment)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     segment?.wallHeight,
     segment?.roofHeight,
     segment?.roofType,
-    node.position[0],
-    node.position[2],
-    node.rotation,
+    geometryNode.position[0],
+    geometryNode.position[2],
+    geometryNode.rotation,
     node.width,
     node.depth,
     node.heightAboveRidge,
@@ -1057,15 +1134,15 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
 
   const fluesGeometry = useMemo(() => {
     if (!segment) return null
-    return buildFluesGeometry(node, segment)
+    return buildFluesGeometry(geometryNode, segment)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     segment?.wallHeight,
     segment?.roofHeight,
     segment?.roofType,
-    node.position[0],
-    node.position[2],
-    node.rotation,
+    geometryNode.position[0],
+    geometryNode.position[2],
+    geometryNode.rotation,
     node.width,
     node.heightAboveRidge,
     node.cap,
@@ -1084,12 +1161,21 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
     }
   }, [fluesGeometry])
 
-  // Resolve material from the drag-drop pipeline (node.materialPreset for
-  // library refs, node.material for explicit overrides). Fall back to the
-  // default white when nothing's applied.
-  const presetMaterial = createMaterialFromPresetRef(node.materialPreset)
-  const explicitMaterial = node.material ? createMaterial(node.material) : null
-  const material = explicitMaterial ?? presetMaterial ?? defaultMaterial
+  // Main (surface) material — body sides, bands, flues, cap sides, etc.
+  const bodyPreset = createMaterialFromPresetRef(node.materialPreset)
+  const bodyExplicit = node.material ? createMaterial(node.material) : null
+  const material = bodyExplicit ?? bodyPreset ?? defaultMaterial
+
+  // Top material — applied to the topmost upward-facing face only (either the
+  // cap's top, or the body's top when there's no cap). Falls back to body so
+  // a single dropped material still paints everything.
+  const topPreset = createMaterialFromPresetRef(node.topMaterialPreset)
+  const topExplicit = node.topMaterial ? createMaterial(node.topMaterial) : null
+  const topMaterial = topExplicit ?? topPreset ?? material
+
+  // Body / cap geometries are partitioned so group 0 → surface, group 1 → top.
+  // Pass a material array so each group renders with its own material.
+  const surfaceArray = [material, topMaterial]
 
   if (!segment || !geometry) return null
 
@@ -1101,16 +1187,47 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
       visible={node.visible}
       {...handlers}
     >
-      <mesh castShadow geometry={geometry.body} material={material} receiveShadow />
-      {geometry.bands && (
-        <mesh castShadow geometry={geometry.bands} material={material} receiveShadow />
-      )}
-      {capGeometry && (
-        <mesh castShadow geometry={capGeometry} material={material} receiveShadow />
-      )}
-      {fluesGeometry && (
-        <mesh castShadow geometry={fluesGeometry} material={material} receiveShadow />
-      )}
+      {/* Live-preview offset: position/rotation overrides apply via this
+          nested group so the chimney glides during slider drag without
+          rebuilding the (expensive) CSG geometry. On commit the deltas
+          drop to zero and the rebuilt geometry has the new position
+          baked in. */}
+      <group position={[liveDeltaX, 0, liveDeltaZ]} rotation-y={liveDeltaRot}>
+        <mesh
+          castShadow
+          geometry={geometry.body}
+          material={surfaceArray}
+          name="chimney-surface"
+          receiveShadow
+        />
+        {geometry.bands && (
+          <mesh
+            castShadow
+            geometry={geometry.bands}
+            material={material}
+            name="chimney-surface"
+            receiveShadow
+          />
+        )}
+        {capGeometry && (
+          <mesh
+            castShadow
+            geometry={capGeometry}
+            material={surfaceArray}
+            name="chimney-surface"
+            receiveShadow
+          />
+        )}
+        {fluesGeometry && (
+          <mesh
+            castShadow
+            geometry={fluesGeometry}
+            material={surfaceArray}
+            name="chimney-surface"
+            receiveShadow
+          />
+        )}
+      </group>
     </group>
   )
 }

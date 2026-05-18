@@ -2,6 +2,7 @@
 
 import {
   type CeilingNode,
+  type ChimneyMaterialRole,
   type ChimneyNode,
   type ColumnNode,
   type FenceNode,
@@ -14,6 +15,8 @@ import {
   type MaterialTarget,
   type RoofNode,
   type RoofSurfaceMaterialRole,
+  type SkylightMaterialRole,
+  type SkylightNode,
   type SlabNode,
   type StairNode,
   type StairSurfaceMaterialRole,
@@ -23,7 +26,7 @@ import {
 
 export type PaintableMaterialTarget = Extract<
   MaterialTarget,
-  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling' | 'chimney'
+  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling' | 'chimney' | 'skylight'
 >
 
 export type SingleSurfaceMaterialRole = 'surface'
@@ -142,6 +145,55 @@ export function buildSingleSurfaceMaterialPatch<
   } as Partial<TNode>
 }
 
+export function buildChimneyMaterialPatch(
+  role: ChimneyMaterialRole,
+  material: MaterialSchema | undefined,
+  materialPreset: string | undefined,
+): Partial<ChimneyNode> {
+  if (role === 'top') {
+    return { topMaterial: material, topMaterialPreset: materialPreset }
+  }
+  return { material, materialPreset }
+}
+
+export function buildSkylightMaterialPatch(
+  role: SkylightMaterialRole,
+  material: MaterialSchema | undefined,
+  materialPreset: string | undefined,
+): Partial<SkylightNode> {
+  if (role === 'glass') {
+    return { glassMaterial: material, glassMaterialPreset: materialPreset }
+  }
+  return { material, materialPreset }
+}
+
+export function getEffectiveSkylightMaterial(
+  node: SkylightNode,
+  role: SkylightMaterialRole,
+): { material: MaterialSchema | undefined; materialPreset: string | undefined } {
+  if (role === 'glass') {
+    const hasGlass = node.glassMaterial !== undefined || node.glassMaterialPreset !== undefined
+    if (hasGlass) {
+      return { material: node.glassMaterial, materialPreset: node.glassMaterialPreset }
+    }
+  }
+  return { material: node.material, materialPreset: node.materialPreset }
+}
+
+export function getEffectiveChimneyMaterial(
+  node: ChimneyNode,
+  role: ChimneyMaterialRole,
+): { material: MaterialSchema | undefined; materialPreset: string | undefined } {
+  if (role === 'top') {
+    // Top falls back to body material if it isn't set.
+    const hasTop = node.topMaterial !== undefined || node.topMaterialPreset !== undefined
+    if (hasTop) {
+      return { material: node.topMaterial, materialPreset: node.topMaterialPreset }
+    }
+  }
+  return { material: node.material, materialPreset: node.materialPreset }
+}
+
 export function resolveActivePaintMaterialFromSelection(params: {
   nodes: Record<string, any>
   selectedId: string | null
@@ -220,11 +272,52 @@ export function resolveActivePaintMaterialFromSelection(params: {
   }
 
   if (
+    selectedNode.type === 'chimney' &&
+    (selectedMaterialTarget.role === 'surface' || selectedMaterialTarget.role === 'top')
+  ) {
+    const surface = getEffectiveChimneyMaterial(
+      selectedNode,
+      selectedMaterialTarget.role as ChimneyMaterialRole,
+    )
+    return hasActivePaintMaterial({
+      material: surface.material,
+      materialPreset: surface.materialPreset,
+      sourceTarget: 'chimney',
+    })
+      ? {
+          material: surface.material,
+          materialPreset: surface.materialPreset,
+          sourceTarget: 'chimney',
+        }
+      : null
+  }
+
+  if (
+    selectedNode.type === 'skylight' &&
+    (selectedMaterialTarget.role === 'frame' || selectedMaterialTarget.role === 'glass')
+  ) {
+    const surface = getEffectiveSkylightMaterial(
+      selectedNode,
+      selectedMaterialTarget.role as SkylightMaterialRole,
+    )
+    return hasActivePaintMaterial({
+      material: surface.material,
+      materialPreset: surface.materialPreset,
+      sourceTarget: 'skylight',
+    })
+      ? {
+          material: surface.material,
+          materialPreset: surface.materialPreset,
+          sourceTarget: 'skylight',
+        }
+      : null
+  }
+
+  if (
     (selectedNode.type === 'fence' ||
       selectedNode.type === 'column' ||
       selectedNode.type === 'slab' ||
-      selectedNode.type === 'ceiling' ||
-      selectedNode.type === 'chimney') &&
+      selectedNode.type === 'ceiling') &&
     selectedMaterialTarget.role === 'surface'
   ) {
     const target = selectedNode.type
@@ -284,6 +377,10 @@ export function resolvePaintTargetFromSelection(params: {
 
   if (selectedNode.type === 'chimney') {
     return 'chimney'
+  }
+
+  if (selectedNode.type === 'skylight') {
+    return 'skylight'
   }
 
   return null

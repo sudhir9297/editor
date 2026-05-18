@@ -2,6 +2,8 @@ import type {
   AnyNodeId,
   BuildingNode,
   CeilingNode,
+  ChimneyNode,
+  SkylightNode,
   ColumnNode,
   DoorNode,
   ElevatorNode,
@@ -21,6 +23,8 @@ import { sfxEmitter } from '../../../lib/sfx-bus'
 import useEditor from '../../../store/use-editor'
 import { MoveBuildingContent } from '../building/move-building-tool'
 import { MoveCeilingTool } from '../ceiling/move-ceiling-tool'
+import { MoveChimneyTool } from '../chimney/move-chimney-tool'
+import { MoveSkylightTool } from '../skylight/move-skylight-tool'
 import { MoveColumnTool } from '../column/move-column-tool'
 import { MoveDoorTool } from '../door/move-door-tool'
 import { MoveElevatorTool } from '../elevator/move-elevator-tool'
@@ -117,5 +121,7 @@ export const MoveTool: React.FC<{
     return <MoveSpawnTool node={movingNode as SpawnNode} onCommitted={onSpawnMoved} />
   if (movingNode.type === 'stair' || movingNode.type === 'stair-segment')
     return <MoveRoofTool node={movingNode as StairNode | StairSegmentNode} />
+  if (movingNode.type === 'chimney') return <MoveChimneyTool node={movingNode as ChimneyNode} />
+  if (movingNode.type === 'skylight') return <MoveSkylightTool node={movingNode as SkylightNode} />
   return <MoveItemContent movingNode={movingNode as ItemNode} />
 }
