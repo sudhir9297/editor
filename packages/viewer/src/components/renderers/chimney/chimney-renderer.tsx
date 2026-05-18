@@ -1006,6 +1006,7 @@ function buildChimneyGeometry(
 export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
   const ref = useRef<THREE.Group>(null!)
   useRegistry(storeNode.id, 'chimney', ref)
+  const isTransient = !!(storeNode.metadata as Record<string, unknown> | null)?.isTransient
   const handlers = useNodeEvents(storeNode, 'chimney')
 
   // Slider drags write into useLiveNodeOverrides for live preview without
@@ -1185,7 +1186,7 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
       ref={ref}
       rotation-y={segment.rotation}
       visible={node.visible}
-      {...handlers}
+      {...(isTransient ? {} : handlers)}
     >
       {/* Live-preview offset: position/rotation overrides apply via this
           nested group so the chimney glides during slider drag without
