@@ -50,7 +50,6 @@ export const MaterialTarget = z.enum([
   'slab',
   'ceiling',
   'chimney',
-  'skylight',
   'door',
   'window',
 ])

@@ -27,7 +27,6 @@ export {
 export { BuildingNode } from './nodes/building'
 export { CeilingNode } from './nodes/ceiling'
 export { ChimneyMaterialRole, ChimneyNode } from './nodes/chimney'
-export { SkylightMaterialRole, SkylightNode } from './nodes/skylight'
 export {
   COLUMN_PRESETS,
   ColumnBaseStyle,

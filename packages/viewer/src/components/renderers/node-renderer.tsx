@@ -4,7 +4,6 @@ import { type AnyNode, useScene } from '@pascal-app/core'
 import { BuildingRenderer } from './building/building-renderer'
 import { CeilingRenderer } from './ceiling/ceiling-renderer'
 import { ChimneyRenderer } from './chimney/chimney-renderer'
-import { SkylightRenderer } from './skylight/skylight-renderer'
 import { ColumnRenderer } from './column/column-renderer'
 import { DoorRenderer } from './door/door-renderer'
 import { ElevatorRenderer } from './elevator/elevator-renderer'
@@ -48,7 +47,6 @@ export const NodeRenderer = ({ nodeId }: { nodeId: AnyNode['id'] }) => {
       {node.type === 'roof' && <RoofRenderer node={node} />}
       {node.type === 'roof-segment' && <RoofSegmentRenderer node={node} />}
       {node.type === 'chimney' && <ChimneyRenderer node={node} />}
-      {node.type === 'skylight' && <SkylightRenderer node={node} />}
       {node.type === 'stair' && <StairRenderer node={node} />}
       {node.type === 'stair-segment' && <StairSegmentRenderer node={node} />}
       {node.type === 'scan' && <ScanRenderer node={node} />}

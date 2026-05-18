@@ -170,14 +170,14 @@ function RoofSegmentTreeNode({
   const setHoveredId = useViewer((state) => state.setHoveredId)
   const { startDrag, isDragging } = useTreeNodeDrag()
 
-  // Roof element ids (chimneys, skylights, etc.) hosted by this segment.
+  // Roof element ids (chimneys, etc.) hosted by this segment.
   const roofElementIds = useScene(
     useShallow((s) => {
       const seg = s.nodes[node.id as AnyNodeId] as RoofSegmentNode | undefined
       if (!seg) return [] as string[]
       return (seg.children ?? []).filter((childId) => {
         const t = s.nodes[childId as AnyNodeId]?.type
-        return t === 'chimney' || t === 'skylight'
+        return t === 'chimney'
       })
     }),
   )

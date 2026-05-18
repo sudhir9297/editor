@@ -5,8 +5,6 @@ import {
   type CeilingNode,
   type ChimneyMaterialRole,
   type ChimneyNode,
-  type SkylightMaterialRole,
-  type SkylightNode,
   type ColumnNode,
   emitter,
   type FenceNode,
@@ -45,7 +43,6 @@ import { type BufferGeometry, Color, type Material, type Mesh, type Object3D } f
 import {
   type ActivePaintMaterial,
   buildChimneyMaterialPatch,
-  buildSkylightMaterialPatch,
   buildRoofSurfaceMaterialPatch,
   buildSingleSurfaceMaterialPatch,
   buildStairSurfaceMaterialPatch,
@@ -340,31 +337,6 @@ function applyStairPaintPreview(
     for (let index = restores.length - 1; index >= 0; index -= 1) {
       restores[index]?.()
     }
-  }
-}
-
-function applySkylightPaintPreview(
-  node: SkylightNode,
-  role: SkylightMaterialRole,
-  material: ActivePaintMaterial,
-): PaintPreviewCleanup | null {
-  const root = getRegisteredNodeObject(node.id)
-  if (!root) return null
-  const previewMaterial = getSingleSurfacePreviewMaterial(material)
-  if (!previewMaterial) return null
-  const restores: PaintPreviewCleanup[] = []
-  root.traverse((object) => {
-    const mesh = object as Mesh
-    if (!mesh.isMesh) return
-    const isGlass = mesh.name === 'skylight-glass'
-    const isFrame = mesh.name === 'skylight-surface'
-    if ((role === 'glass' && isGlass) || (role === 'frame' && isFrame)) {
-      restores.push(previewMeshMaterial(mesh, previewMaterial))
-    }
-  })
-  if (restores.length === 0) return null
-  return () => {
-    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]?.()
   }
 }
 
@@ -992,35 +964,6 @@ export const SelectionManager = () => {
           preview: compatible
             ? () =>
                 applyChimneyPaintPreview(node as ChimneyNode, role, activePaintMaterial)
-            : () => previewCursor('not-allowed'),
-        }
-      }
-
-      if (node.type === 'skylight') {
-        const compatible = hasActivePaintMaterial(activePaintMaterial)
-        const meshName = getEventObject(event as NodeEvent)?.name ?? ''
-        const role: SkylightMaterialRole = meshName === 'skylight-glass' ? 'glass' : 'frame'
-        return {
-          key: `skylight:${node.id}:${role}`,
-          hoveredId: node.id as AnyNodeId,
-          hoverMode: compatible ? 'paint-ready' : 'paint-disabled',
-          apply: compatible
-            ? () => {
-                useScene
-                  .getState()
-                  .updateNode(
-                    node.id as AnyNodeId,
-                    buildSkylightMaterialPatch(
-                      role,
-                      activePaintMaterial.material,
-                      activePaintMaterial.materialPreset,
-                    ),
-                  )
-              }
-            : null,
-          preview: compatible
-            ? () =>
-                applySkylightPaintPreview(node as SkylightNode, role, activePaintMaterial)
             : () => previewCursor('not-allowed'),
         }
       }

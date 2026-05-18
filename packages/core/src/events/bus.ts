@@ -6,7 +6,6 @@ import type {
   CeilingNode,
   ChimneyNode,
   ColumnNode,
-  SkylightNode,
   DoorNode,
   ElevatorNode,
   FenceNode,
@@ -71,7 +70,6 @@ export type WindowEvent = NodeEvent<WindowNode>
 export type DoorEvent = NodeEvent<DoorNode>
 export type ElevatorEvent = NodeEvent<ElevatorNode>
 export type ChimneyEvent = NodeEvent<ChimneyNode>
-export type SkylightEvent = NodeEvent<SkylightNode>
 
 // Event suffixes - exported for use in hooks
 export const eventSuffixes = [
@@ -203,7 +201,6 @@ type EditorEvents = GridEvents &
   NodeEvents<'window', WindowEvent> &
   NodeEvents<'door', DoorEvent> &
   NodeEvents<'chimney', ChimneyEvent> &
-  NodeEvents<'skylight', SkylightEvent> &
   CameraControlEvents &
   ToolEvents &
   GuideEvents &

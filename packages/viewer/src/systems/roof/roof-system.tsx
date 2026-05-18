@@ -5,7 +5,6 @@ import {
   type RoofNode,
   type RoofSegmentNode,
   type RoofType,
-  type SkylightNode,
   sceneRegistry,
   useScene,
 } from '@pascal-app/core'
@@ -81,8 +80,8 @@ export const RoofSystem = () => {
       const node = nodes[id]
       if (!node) return
 
-      // A chimney or skylight edit dirties its host roof so the merged geometry rebuilds.
-      if (node.type === 'chimney' || node.type === 'skylight') {
+      // A chimney edit dirties its host roof so the merged geometry rebuilds.
+      if (node.type === 'chimney') {
         const seg = node.roofSegmentId
           ? (nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
           : undefined
@@ -232,8 +231,6 @@ function updateMergedRoofGeometry(
       let cut: Brush | null = null
       if (childElem.type === 'chimney') {
         cut = buildChimneyCutBrush(childElem as ChimneyNode, child)
-      } else if (childElem.type === 'skylight') {
-        cut = buildSkylightCutBrush(childElem as SkylightNode, child)
       }
       if (!cut) continue
 
@@ -1186,36 +1183,6 @@ export function buildChimneyCutBrush(
   // pipeline runs with `useGroups: true` and a 4-slot material array — extra
   // groups make `three-bvh-csg` produce garbage geometry (the cut silently
   // fails). Collapse to a single group on materialIndex 0.
-  const indexCount = geo.getIndex()?.count ?? 0
-  geo.clearGroups()
-  geo.addGroup(0, indexCount, 0)
-
-  computeGeometryBoundsTree(geo)
-  const brush = new Brush(geo, dummyMats)
-  brush.updateMatrixWorld()
-  return brush
-}
-
-export function buildSkylightCutBrush(
-  skylight: SkylightNode,
-  segment: RoofSegmentNode,
-): Brush | null {
-  const inflate = Math.max(0, skylight.cutoutOffset ?? 0.02)
-  const w = Math.max(0.05, skylight.width + 2 * skylight.frameThickness + 2 * inflate)
-  const d = Math.max(0.05, skylight.height + 2 * skylight.frameThickness + 2 * inflate)
-  const peakY =
-    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
-  const topY = peakY + 0.5
-  const baseY = -0.5
-  const h = topY - baseY
-  const centerY = (topY + baseY) / 2
-
-  const geo = new THREE.BoxGeometry(w, h, d)
-  if (Math.abs(skylight.rotation) > 1e-4) {
-    geo.rotateY(skylight.rotation)
-  }
-  geo.translate(skylight.position[0], centerY, skylight.position[2])
-
   const indexCount = geo.getIndex()?.count ?? 0
   geo.clearGroups()
   geo.addGroup(0, indexCount, 0)
