@@ -6,6 +6,8 @@ import {
   type ChimneyNode,
   ChimneyNode as ChimneyNodeSchema,
   type RoofNode,
+  type SkylightNode,
+  SkylightNode as SkylightNodeSchema,
   type RoofSegmentNode,
   RoofSegmentNode as RoofSegmentNodeSchema,
   useScene,
@@ -89,6 +91,23 @@ export function RoofPanel() {
     sfxEmitter.emit('sfx:structure-build')
   }, [node, segments, createNode, updateNode, setSelection])
 
+  const handleAddSkylight = useCallback(() => {
+    if (!node) return
+    const firstSegment = segments[0]
+    if (!firstSegment) return
+    const skylight = SkylightNodeSchema.parse({
+      roofSegmentId: firstSegment.id,
+      parentId: firstSegment.id,
+      position: [0, 0, 0],
+    })
+    createNode(skylight, firstSegment.id as AnyNodeId)
+    updateNode(firstSegment.id as AnyNode['id'], {
+      children: [...(firstSegment.children ?? []), skylight.id],
+    })
+    setSelection({ selectedIds: [skylight.id as AnyNode['id']] })
+    sfxEmitter.emit('sfx:structure-build')
+  }, [node, segments, createNode, updateNode, setSelection])
+
   // Flatten chimneys hosted by any segment of this roof.
   const chimneys = useScene(
     useShallow((s) => {
@@ -106,6 +125,21 @@ export function RoofPanel() {
     }),
   )
 
+  const skylights = useScene(
+    useShallow((s) => {
+      if (!node) return []
+      const out: SkylightNode[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = s.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) {
+          const child = s.nodes[childId as AnyNodeId] as SkylightNode | undefined
+          if (child?.type === 'skylight') out.push(child)
+        }
+      }
+      return out
+    }),
+  )
 
   const handleSelectSegment = useCallback(
     (segmentId: string) => {
@@ -189,6 +223,17 @@ export function RoofPanel() {
               <span className="text-muted-foreground text-xs">chimney</span>
             </button>
           ))}
+          {skylights.map((skylight, i) => (
+            <button
+              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+              key={skylight.id}
+              onClick={() => setSelection({ selectedIds: [skylight.id as AnyNode['id']] })}
+              type="button"
+            >
+              <span className="truncate">{skylight.name || `Skylight ${i + 1}`}</span>
+              <span className="text-muted-foreground text-xs">skylight</span>
+            </button>
+          ))}
         </div>
         <ActionGroup>
           <ActionButton
@@ -196,6 +241,12 @@ export function RoofPanel() {
             icon={<Plus className="h-3.5 w-3.5" />}
             label="Add Chimney"
             onClick={handleAddChimney}
+          />
+          <ActionButton
+            disabled={segments.length === 0}
+            icon={<Plus className="h-3.5 w-3.5" />}
+            label="Add Skylight"
+            onClick={handleAddSkylight}
           />
         </ActionGroup>
       </PanelSection>

@@ -4,6 +4,7 @@ export type {
   CameraControlFitSceneEvent,
   CeilingEvent,
   ChimneyEvent,
+  SkylightEvent,
   ColumnEvent,
   DoorEvent,
   ElevatorEvent,

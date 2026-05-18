@@ -6,6 +6,8 @@ import {
   type ChimneyMaterialRole,
   type ChimneyNode,
   type ColumnNode,
+  type SkylightMaterialRole,
+  type SkylightNode,
   emitter,
   type FenceNode,
   getMaterialPresetByRef,
@@ -43,6 +45,7 @@ import { type BufferGeometry, Color, type Material, type Mesh, type Object3D } f
 import {
   type ActivePaintMaterial,
   buildChimneyMaterialPatch,
+  buildSkylightMaterialPatch,
   buildRoofSurfaceMaterialPatch,
   buildSingleSurfaceMaterialPatch,
   buildStairSurfaceMaterialPatch,
@@ -369,6 +372,31 @@ function applyChimneyPaintPreview(
         mesh.material = previousArray
       })
     } else if (role === 'surface') {
+      restores.push(previewMeshMaterial(mesh, previewMaterial))
+    }
+  })
+  if (restores.length === 0) return null
+  return () => {
+    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]?.()
+  }
+}
+
+function applySkylightPaintPreview(
+  node: SkylightNode,
+  role: SkylightMaterialRole,
+  material: ActivePaintMaterial,
+): PaintPreviewCleanup | null {
+  const root = getRegisteredNodeObject(node.id)
+  if (!root) return null
+  const previewMaterial = getSingleSurfacePreviewMaterial(material)
+  if (!previewMaterial) return null
+  const restores: PaintPreviewCleanup[] = []
+  root.traverse((object) => {
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return
+    if (role === 'glass' && mesh.name === 'skylight-glass') {
+      restores.push(previewMeshMaterial(mesh, previewMaterial))
+    } else if (role === 'frame' && mesh.name === 'skylight-surface') {
       restores.push(previewMeshMaterial(mesh, previewMaterial))
     }
   })
@@ -968,6 +996,36 @@ export const SelectionManager = () => {
         }
       }
 
+      if (node.type === 'skylight') {
+        const compatible = hasActivePaintMaterial(activePaintMaterial)
+        const hitObject = getEventObject(event as NodeEvent)
+        const role: SkylightMaterialRole =
+          hitObject.name === 'skylight-glass' ? 'glass' : 'frame'
+        return {
+          key: `skylight:${node.id}:${role}`,
+          hoveredId: node.id as AnyNodeId,
+          hoverMode: compatible ? 'paint-ready' : 'paint-disabled',
+          apply: compatible
+            ? () => {
+                useScene
+                  .getState()
+                  .updateNode(
+                    node.id as AnyNodeId,
+                    buildSkylightMaterialPatch(
+                      role,
+                      activePaintMaterial.material,
+                      activePaintMaterial.materialPreset,
+                    ),
+                  )
+              }
+            : null,
+          preview: compatible
+            ? () =>
+                applySkylightPaintPreview(node as SkylightNode, role, activePaintMaterial)
+            : () => previewCursor('not-allowed'),
+        }
+      }
+
       if (
         node.type === 'fence' ||
         node.type === 'column' ||
@@ -1089,6 +1147,7 @@ export const SelectionManager = () => {
       'door',
       'zone',
       'chimney',
+      'skylight',
     ] as const
 
     for (const type of allTypes) {
@@ -1414,6 +1473,7 @@ export const SelectionManager = () => {
       'zone',
       'site',
       'chimney',
+      'skylight',
     ]
     allTypes.forEach((type) => {
       emitter.on(`${type}:enter` as any, onEnter as any)
@@ -1488,6 +1548,7 @@ export const SelectionManager = () => {
       'door',
       'zone',
       'chimney',
+      'skylight',
     ] as const
 
     for (const type of allTypes) {

@@ -7,6 +7,7 @@ import {
   type CeilingNode,
   type ChimneyNode,
   type ColumnNode,
+  type SkylightNode,
   type DoorNode,
   type ElevatorNode,
   type FenceNode,
@@ -153,6 +154,7 @@ type EditorState = {
     | StairSegmentNode
     | BuildingNode
     | ChimneyNode
+    | SkylightNode
     | null
   setMovingNode: (
     node:

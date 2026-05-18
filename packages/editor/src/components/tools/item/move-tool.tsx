@@ -4,6 +4,7 @@ import type {
   CeilingNode,
   ChimneyNode,
   ColumnNode,
+  SkylightNode,
   DoorNode,
   ElevatorNode,
   FenceNode,
@@ -23,6 +24,7 @@ import useEditor from '../../../store/use-editor'
 import { MoveBuildingContent } from '../building/move-building-tool'
 import { MoveCeilingTool } from '../ceiling/move-ceiling-tool'
 import { MoveChimneyTool } from '../chimney/move-chimney-tool'
+import { MoveSkylightTool } from '../skylight/move-skylight-tool'
 import { MoveColumnTool } from '../column/move-column-tool'
 import { MoveDoorTool } from '../door/move-door-tool'
 import { MoveElevatorTool } from '../elevator/move-elevator-tool'
@@ -120,5 +122,6 @@ export const MoveTool: React.FC<{
   if (movingNode.type === 'stair' || movingNode.type === 'stair-segment')
     return <MoveRoofTool node={movingNode as StairNode | StairSegmentNode} />
   if (movingNode.type === 'chimney') return <MoveChimneyTool node={movingNode as ChimneyNode} />
+  if (movingNode.type === 'skylight') return <MoveSkylightTool node={movingNode as SkylightNode} />
   return <MoveItemContent movingNode={movingNode as ItemNode} />
 }
