@@ -10,7 +10,6 @@ import useEditor, { type Phase, type Tool } from '../../store/use-editor'
 import { CeilingBoundaryEditor } from './ceiling/ceiling-boundary-editor'
 import { CeilingHoleEditor } from './ceiling/ceiling-hole-editor'
 import { CeilingTool } from './ceiling/ceiling-tool'
-import { ChimneyTool } from './chimney/chimney-tool'
 import { ColumnTool } from './column/column-tool'
 import { DoorTool } from './door/door-tool'
 import { ElevatorTool } from './elevator/elevator-tool'
@@ -43,7 +42,6 @@ const tools: Record<Phase, Partial<Record<Tool, React.FC>>> = {
     slab: SlabTool,
     ceiling: CeilingTool,
     roof: RoofTool,
-    chimney: ChimneyTool,
     stair: StairTool,
     door: DoorTool,
     item: ItemTool,

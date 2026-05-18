@@ -3,6 +3,8 @@
 import {
   type AnyNode,
   type AnyNodeId,
+  type ChimneyNode,
+  ChimneyNode as ChimneyNodeSchema,
   type RoofNode,
   type RoofSegmentNode,
   RoofSegmentNode as RoofSegmentNodeSchema,
@@ -64,6 +66,45 @@ export function RoofPanel() {
     })
     createNode(segment, node.id as AnyNodeId)
   }, [node, createNode])
+
+  const handleAddChimney = useCallback(() => {
+    if (!node) return
+    // Host on the first segment of this roof. The chimney's panel and a
+    // future drag handle let the user reposition it after creation.
+    const firstSegment = segments[0]
+    if (!firstSegment) {
+      console.warn('[roof-panel] Add Chimney: roof has no segments yet.')
+      return
+    }
+    const chimney = ChimneyNodeSchema.parse({
+      roofSegmentId: firstSegment.id,
+      parentId: firstSegment.id,
+      position: [0, 0, 0],
+    })
+    createNode(chimney, firstSegment.id as AnyNodeId)
+    updateNode(firstSegment.id as AnyNode['id'], {
+      children: [...(firstSegment.children ?? []), chimney.id],
+    })
+    setSelection({ selectedIds: [chimney.id as AnyNode['id']] })
+    sfxEmitter.emit('sfx:structure-build')
+  }, [node, segments, createNode, updateNode, setSelection])
+
+  // Flatten chimneys hosted by any segment of this roof.
+  const chimneys = useScene(
+    useShallow((s) => {
+      if (!node) return []
+      const out: ChimneyNode[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = s.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) {
+          const child = s.nodes[childId as AnyNodeId] as ChimneyNode | undefined
+          if (child?.type === 'chimney') out.push(child)
+        }
+      }
+      return out
+    }),
+  )
 
   const handleSelectSegment = useCallback(
     (segmentId: string) => {
@@ -130,6 +171,30 @@ export function RoofPanel() {
             icon={<Plus className="h-3.5 w-3.5" />}
             label="Add Segment"
             onClick={handleAddSegment}
+          />
+        </ActionGroup>
+      </PanelSection>
+
+      <PanelSection title="Elements">
+        <div className="flex flex-col gap-1">
+          {chimneys.map((chimney, i) => (
+            <button
+              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+              key={chimney.id}
+              onClick={() => setSelection({ selectedIds: [chimney.id as AnyNode['id']] })}
+              type="button"
+            >
+              <span className="truncate">{chimney.name || `Chimney ${i + 1}`}</span>
+              <span className="text-muted-foreground text-xs">chimney</span>
+            </button>
+          ))}
+        </div>
+        <ActionGroup>
+          <ActionButton
+            disabled={segments.length === 0}
+            icon={<Plus className="h-3.5 w-3.5" />}
+            label="Add Chimney"
+            onClick={handleAddChimney}
           />
         </ActionGroup>
       </PanelSection>

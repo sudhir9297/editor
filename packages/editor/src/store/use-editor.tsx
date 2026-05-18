@@ -65,7 +65,6 @@ export type StructureTool =
   | 'spawn'
   | 'window'
   | 'door'
-  | 'chimney'
 
 // Furnish mode tools (items and decoration)
 export type FurnishTool = 'item'

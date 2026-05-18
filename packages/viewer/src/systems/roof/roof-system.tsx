@@ -1164,6 +1164,14 @@ function buildChimneyCutBrush(
   }
   geo.translate(chimney.position[0], centerY, chimney.position[2])
 
+  // BoxGeometry ships with 6 face groups (materialIndex 0..5). The roof CSG
+  // pipeline runs with `useGroups: true` and a 4-slot material array — extra
+  // groups make `three-bvh-csg` produce garbage geometry (the cut silently
+  // fails). Collapse to a single group on materialIndex 0.
+  const indexCount = geo.getIndex()?.count ?? 0
+  geo.clearGroups()
+  geo.addGroup(0, indexCount, 0)
+
   computeGeometryBoundsTree(geo)
   const brush = new Brush(geo, dummyMats)
   brush.updateMatrixWorld()

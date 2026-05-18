@@ -6,6 +6,7 @@ import {
   useScene,
 } from '@pascal-app/core'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import * as THREE from 'three'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import useViewer from '../../../store/use-viewer'
@@ -27,15 +28,17 @@ export const RoofRenderer = ({ node }: { node: RoofNode }) => {
   // Collect chimney IDs hosted by any segment of this roof. Rendered outside
   // segments-wrapper (which is invisible during normal mode) so chimneys stay
   // visible at all times.
-  const chimneyIds = useScene((state) => {
-    const ids: AnyNodeId[] = []
-    for (const segmentId of node.children ?? []) {
-      const seg = state.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
-      if (!seg) continue
-      for (const childId of seg.children ?? []) ids.push(childId as AnyNodeId)
-    }
-    return ids
-  })
+  const chimneyIds = useScene(
+    useShallow((state) => {
+      const ids: AnyNodeId[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = state.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) ids.push(childId as AnyNodeId)
+      }
+      return ids
+    }),
+  )
   const placeholderGeometry = useMemo(() => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3))
