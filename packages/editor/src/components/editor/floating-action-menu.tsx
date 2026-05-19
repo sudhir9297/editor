@@ -6,6 +6,7 @@ import {
   type CeilingNode,
   ChimneyNode,
   ColumnNode,
+  DormerNode,
   SkylightNode,
   SolarPanelNode,
   DoorNode,
@@ -54,6 +55,7 @@ const ALLOWED_TYPES = [
   'chimney',
   'skylight',
   'solar-panel',
+  'dormer',
 ]
 const DELETE_ONLY_TYPES: string[] = []
 const HOLE_TYPES = ['slab', 'ceiling']
@@ -205,7 +207,8 @@ export function FloatingActionMenu() {
         node.type === 'stair-segment' ||
         node.type === 'chimney' ||
         node.type === 'skylight' ||
-        node.type === 'solar-panel'
+        node.type === 'solar-panel' ||
+        node.type === 'dormer'
       ) {
         setMovingNode(node as any)
       }
@@ -300,6 +303,16 @@ export function FloatingActionMenu() {
             ]
           }
           duplicate = SolarPanelNode.parse(duplicateInfo)
+        } else if (node.type === 'dormer') {
+          duplicateInfo.id = generateId('dormer')
+          if (duplicateInfo.position) {
+            duplicateInfo.position = [
+              (duplicateInfo.position[0] ?? 0) + 0.5,
+              0,
+              duplicateInfo.position[2] ?? 0,
+            ]
+          }
+          duplicate = DormerNode.parse(duplicateInfo)
         } else if (node.type === 'door') {
           duplicate = DoorNode.parse(duplicateInfo)
         } else if (node.type === 'window') {
@@ -341,7 +354,7 @@ export function FloatingActionMenu() {
       }
 
       if (duplicate) {
-        if (duplicate.type === 'chimney' || duplicate.type === 'skylight' || duplicate.type === 'solar-panel') {
+        if (duplicate.type === 'chimney' || duplicate.type === 'skylight' || duplicate.type === 'solar-panel' || duplicate.type === 'dormer') {
           const segmentId = (duplicate as { roofSegmentId?: string }).roofSegmentId as AnyNodeId | undefined
           if (segmentId) {
             useScene.getState().createNode(duplicate, segmentId)
@@ -455,7 +468,7 @@ export function FloatingActionMenu() {
         sfxEmitter.emit('sfx:structure-delete')
       }
       // For roof-hosted elements, unlink from host roof-segment's children.
-      if (node?.type === 'chimney' || node?.type === 'skylight' || node?.type === 'solar-panel') {
+      if (node?.type === 'chimney' || node?.type === 'skylight' || node?.type === 'solar-panel' || node?.type === 'dormer') {
         const segmentId = (node as { roofSegmentId?: string }).roofSegmentId as
           | AnyNodeId
           | undefined

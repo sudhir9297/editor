@@ -2,7 +2,6 @@ import {
   type AnyNode,
   type AnyNodeId,
   type ChimneyNode,
-  type DormerNode,
   type RoofNode,
   type RoofSegmentNode,
   type RoofType,
@@ -84,15 +83,16 @@ export const RoofSystem = () => {
       const node = nodes[id]
       if (!node) return
 
-      // A chimney, skylight, solar-panel, or dormer edit dirties its host roof so the merged geometry rebuilds.
+      // A chimney, skylight, or solar-panel edit dirties its host roof so the merged geometry rebuilds.
       if (
         node.type === 'chimney' ||
         node.type === 'skylight' ||
-        node.type === 'solar-panel' ||
-        node.type === 'dormer'
+        node.type === 'solar-panel'
       ) {
         const seg = (node as { roofSegmentId?: string }).roofSegmentId
-          ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
+          ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as
+              | RoofSegmentNode
+              | undefined)
           : undefined
         if (seg?.parentId) {
           pendingRoofUpdates.add(seg.parentId as AnyNodeId)
@@ -237,17 +237,16 @@ function updateMergedRoofGeometry(
     for (const childElemId of child.children ?? []) {
       const childElem = nodes[childElemId as AnyNodeId]
       if (!childElem) continue
-      const elemMeta = typeof childElem.metadata === 'object' && childElem.metadata !== null
-        ? (childElem.metadata as Record<string, unknown>)
-        : undefined
+      const elemMeta =
+        typeof childElem.metadata === 'object' && childElem.metadata !== null
+          ? (childElem.metadata as Record<string, unknown>)
+          : undefined
       if (elemMeta?.isTransient) continue
       let cut: Brush | null = null
       if (childElem.type === 'chimney') {
         cut = buildChimneyCutBrush(childElem as ChimneyNode, child)
       } else if (childElem.type === 'skylight') {
         cut = buildSkylightCutBrush(childElem as SkylightNode, child)
-      } else if (childElem.type === 'dormer') {
-        cut = buildDormerCutBrush(childElem as DormerNode, child)
       }
       if (!cut) continue
 
@@ -405,9 +404,7 @@ const RAKE_FACE_ALIGNMENT_EPSILON = 0.35
  * Generate complete hollow-shell geometry for a roof segment.
  * Ports the prototype's CSG approach using three-bvh-csg.
  */
-export function getRoofSegmentBrushes(
-  node: RoofSegmentNode,
-): {
+export function getRoofSegmentBrushes(node: RoofSegmentNode): {
   deckSlab: Brush
   shinSlab: Brush
   wallBrush: Brush
@@ -1173,16 +1170,12 @@ function pushRoofUv(uvs: number[], point: THREE.Vector3, normal: THREE.Vector3) 
  * The brush spans from below the deck to above the chimney top so subtraction
  * passes cleanly through every roof slab layer.
  */
-export function buildChimneyCutBrush(
-  chimney: ChimneyNode,
-  segment: RoofSegmentNode,
-): Brush | null {
+export function buildChimneyCutBrush(chimney: ChimneyNode, segment: RoofSegmentNode): Brush | null {
   const inflate = Math.max(0, chimney.cutoutOffset ?? 0)
   const isRound = (chimney.bodyShape ?? 'square') === 'round'
   const w = Math.max(0.05, chimney.width + 2 * inflate)
   const d = isRound ? w : Math.max(0.05, chimney.depth + 2 * inflate)
-  const peakY =
-    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
+  const peakY = segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
   const topY = peakY + chimney.heightAboveRidge + 0.05
   const baseY = -0.5
   const h = topY - baseY
@@ -1253,46 +1246,6 @@ export function buildSkylightCutBrush(
   return brush
 }
 
-/**
- * Build a vertical cut brush for a dormer in its host segment's local space.
- * The dormer is gravity-aligned (walls go straight up) so the cut is a vertical
- * box at the dormer footprint, tall enough to pierce every roof layer from
- * above the peak down through the walls.
- */
-export function buildDormerCutBrush(
-  dormer: DormerNode,
-  segment: RoofSegmentNode,
-): Brush | null {
-  const inflate = Math.max(0, dormer.cutoutOffset ?? 0.01)
-  const w = Math.max(0.05, dormer.width + 2 * inflate)
-  const d = Math.max(0.05, dormer.depth + 2 * inflate)
-
-  const cx = dormer.position[0]
-  const cz = dormer.position[2]
-
-  const peakY =
-    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
-  const topY = peakY + 1.0
-  const baseY = -0.5
-  const h = topY - baseY
-  const centerY = (topY + baseY) / 2
-
-  const geo = new THREE.BoxGeometry(w, h, d)
-  if (Math.abs(dormer.rotation) > 1e-4) {
-    geo.rotateY(dormer.rotation)
-  }
-  geo.translate(cx, centerY, cz)
-
-  const indexCount = geo.getIndex()?.count ?? 0
-  geo.clearGroups()
-  geo.addGroup(0, indexCount, 0)
-
-  computeGeometryBoundsTree(geo)
-  const brush = new Brush(geo, dummyMats)
-  brush.updateMatrixWorld()
-  return brush
-}
-
 type SurfaceFrame = {
   point: THREE.Vector3
   normal: THREE.Vector3
@@ -1317,8 +1270,17 @@ export function getRoofOuterSurfaceFrameAtPoint(
   lx: number,
   lz: number,
 ): SurfaceFrame {
-  const { roofType, width, depth, wallHeight, roofHeight, wallThickness, deckThickness, overhang, shingleThickness } =
-    segment
+  const {
+    roofType,
+    width,
+    depth,
+    wallHeight,
+    roofHeight,
+    wallThickness,
+    deckThickness,
+    overhang,
+    shingleThickness,
+  } = segment
 
   const activeRh = roofType === 'flat' ? 0 : roofHeight
 

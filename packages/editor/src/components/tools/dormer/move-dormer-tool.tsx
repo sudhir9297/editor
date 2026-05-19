@@ -57,10 +57,13 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
   const [hasHit, setHasHit] = useState(false)
 
   const previewGeo = useMemo(() => {
-    const geo = new THREE.BoxGeometry(node.width, node.frontWallHeight, node.depth)
-    geo.translate(0, node.frontWallHeight / 2, 0)
+    const w = Math.max(0.01, Number.isFinite(node.width) ? node.width : 2)
+    const h = Math.max(0.01, Number.isFinite(node.height) ? node.height : 1.2)
+    const d = Math.max(0.01, Number.isFinite(node.depth) ? node.depth : 1.5)
+    const geo = new THREE.BoxGeometry(w, h, d)
+    geo.translate(0, h / 2, 0)
     return geo
-  }, [node.width, node.depth, node.frontWallHeight])
+  }, [node.width, node.depth, node.height])
 
   useEffect(() => {
     return () => {
@@ -185,12 +188,6 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
         metadata: {},
       })
 
-      if (original.roofSegmentId && original.roofSegmentId !== (targetSegmentId as string)) {
-        st.dirtyNodes.add(original.roofSegmentId as AnyNodeId)
-      }
-      st.dirtyNodes.add(targetSegmentId)
-      st.dirtyNodes.add(node.id as AnyNodeId)
-
       useScene.temporal.getState().pause()
 
       const obj = sceneRegistry.nodes.get(node.id)
@@ -219,9 +216,6 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
         parentId: original.parentId as AnyNodeId | undefined,
         metadata: original.metadata,
       })
-      if (original.roofSegmentId) {
-        useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
-      }
 
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
