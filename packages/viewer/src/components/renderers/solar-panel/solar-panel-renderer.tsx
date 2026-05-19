@@ -11,6 +11,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterialFromPresetRef } from '../../../lib/materials'
 
@@ -20,80 +21,82 @@ const defaultFrameMaterial = new MeshStandardNodeMaterial({
   metalness: 0.8,
 })
 
-// Procedurally paints one photovoltaic panel: a square grid of monocrystalline
-// cells with chamfered corners on a light backsheet, so adjacent chamfers form
-// small diamond gaps where four cells meet. Matches the look of a typical
-// residential mono panel. Lives on a CanvasTexture so we ship no extra assets.
+// Target physical edge length (meters) of one photovoltaic cell. Real mono
+// cells are ~156–166 mm; 0.16 m is a clean round number that gives ~6 cells
+// across a 1.0 m wide panel and ~10 cells along a 1.65 m tall one.
+const SOLAR_CELL_SIZE_M = 0.16
+
+// Procedurally paints ONE monocrystalline cell on a light backsheet, sized so
+// the cell sits inside a small gap of background. The texture wraps with
+// RepeatWrapping; the geometry sets UV repeat per glass face from each panel's
+// actual dimensions, so cells stay square no matter what panelWidth/panelHeight
+// the user picks. Adjacent chamfered corners form the small diamond gaps where
+// four cells meet — matching the look of a real residential mono panel.
 function createSolarPanelTexture(): THREE.CanvasTexture | null {
   if (typeof document === 'undefined') return null
 
-  const size = 1024
+  const size = 256
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  // Light backsheet that shows through chamfered corners.
   ctx.fillStyle = '#dde3ec'
   ctx.fillRect(0, 0, size, size)
 
-  const cells = 7
-  const margin = size * 0.025
-  const gap = size * 0.008
-  const cellSize = (size - margin * 2 - gap * (cells - 1)) / cells
-  const chamfer = cellSize * 0.16
+  const pad = size * 0.04
+  const x = pad
+  const y = pad
+  const cellW = size - pad * 2
+  const cellH = size - pad * 2
+  const chamfer = cellW * 0.16
 
-  for (let cy = 0; cy < cells; cy++) {
-    for (let cx = 0; cx < cells; cx++) {
-      const x = margin + cx * (cellSize + gap)
-      const y = margin + cy * (cellSize + gap)
+  ctx.beginPath()
+  ctx.moveTo(x + chamfer, y)
+  ctx.lineTo(x + cellW - chamfer, y)
+  ctx.lineTo(x + cellW, y + chamfer)
+  ctx.lineTo(x + cellW, y + cellH - chamfer)
+  ctx.lineTo(x + cellW - chamfer, y + cellH)
+  ctx.lineTo(x + chamfer, y + cellH)
+  ctx.lineTo(x, y + cellH - chamfer)
+  ctx.lineTo(x, y + chamfer)
+  ctx.closePath()
 
-      ctx.beginPath()
-      ctx.moveTo(x + chamfer, y)
-      ctx.lineTo(x + cellSize - chamfer, y)
-      ctx.lineTo(x + cellSize, y + chamfer)
-      ctx.lineTo(x + cellSize, y + cellSize - chamfer)
-      ctx.lineTo(x + cellSize - chamfer, y + cellSize)
-      ctx.lineTo(x + chamfer, y + cellSize)
-      ctx.lineTo(x, y + cellSize - chamfer)
-      ctx.lineTo(x, y + chamfer)
-      ctx.closePath()
+  const grad = ctx.createLinearGradient(x, y, x + cellW, y + cellH)
+  grad.addColorStop(0, '#0f1b3a')
+  grad.addColorStop(1, '#162546')
+  ctx.fillStyle = grad
+  ctx.fill()
 
-      const grad = ctx.createLinearGradient(x, y, x + cellSize, y + cellSize)
-      grad.addColorStop(0, '#0f1b3a')
-      grad.addColorStop(1, '#162546')
-      ctx.fillStyle = grad
-      ctx.fill()
-
-      ctx.save()
-      ctx.clip()
-      ctx.strokeStyle = 'rgba(120, 150, 200, 0.10)'
-      ctx.lineWidth = 0.5
-      const fingers = 16
-      for (let f = 1; f < fingers; f++) {
-        const fx = x + (cellSize * f) / fingers
-        ctx.beginPath()
-        ctx.moveTo(fx, y)
-        ctx.lineTo(fx, y + cellSize)
-        ctx.stroke()
-      }
-
-      ctx.strokeStyle = 'rgba(200, 210, 225, 0.35)'
-      ctx.lineWidth = Math.max(1, cellSize * 0.008)
-      for (let b = 1; b <= 2; b++) {
-        const by = y + (cellSize * b) / 3
-        ctx.beginPath()
-        ctx.moveTo(x, by)
-        ctx.lineTo(x + cellSize, by)
-        ctx.stroke()
-      }
-      ctx.restore()
-    }
+  ctx.save()
+  ctx.clip()
+  ctx.strokeStyle = 'rgba(120, 150, 200, 0.10)'
+  ctx.lineWidth = 0.5
+  const fingers = 16
+  for (let f = 1; f < fingers; f++) {
+    const fx = x + (cellW * f) / fingers
+    ctx.beginPath()
+    ctx.moveTo(fx, y)
+    ctx.lineTo(fx, y + cellH)
+    ctx.stroke()
   }
+
+  ctx.strokeStyle = 'rgba(200, 210, 225, 0.35)'
+  ctx.lineWidth = Math.max(1, cellH * 0.008)
+  for (let b = 1; b <= 2; b++) {
+    const by = y + (cellH * b) / 3
+    ctx.beginPath()
+    ctx.moveTo(x, by)
+    ctx.lineTo(x + cellW, by)
+    ctx.stroke()
+  }
+  ctx.restore()
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
   tex.anisotropy = 8
   tex.needsUpdate = true
   return tex
@@ -229,6 +232,15 @@ function buildSolarPanelGeometry(node: SolarPanelNode): THREE.BufferGeometry | n
       if (glassW > 0 && glassH > 0) {
         const glass = new THREE.BoxGeometry(glassW, frameDepth * 0.6, glassH)
         glass.translate(cx, y + frameDepth * 0.2, cz)
+        // Scale UVs so the single-cell texture tiles into a square cell grid
+        // sized by the panel's actual width/height, not stretched to fit.
+        const cellsU = Math.max(1, Math.round(glassW / SOLAR_CELL_SIZE_M))
+        const cellsV = Math.max(1, Math.round(glassH / SOLAR_CELL_SIZE_M))
+        const uv = glass.getAttribute('uv') as THREE.BufferAttribute
+        for (let i = 0; i < uv.count; i++) {
+          uv.setXY(i, uv.getX(i) * cellsU, uv.getY(i) * cellsV)
+        }
+        uv.needsUpdate = true
         panelGeos.push(glass)
       }
 
@@ -318,6 +330,8 @@ export function SolarPanelRenderer({ node }: { node: SolarPanelNode }) {
 
   const surfaceGroupRef = useRef<THREE.Group>(null!)
   const lastAppliedQuat = useRef(new THREE.Quaternion())
+
+  useFollowSegmentDrag(groupRef, effective.roofSegmentId)
 
   // Orient the surface group so its world +Y aligns with the roof surface
   // normal. Runs each frame after R3F has updated all ancestor world matrices,

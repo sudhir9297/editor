@@ -11,6 +11,7 @@ import * as THREE from 'three'
 import { Brush, SUBTRACTION } from 'three-bvh-csg'
 import { computeBoundsTree } from 'three-mesh-bvh'
 import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
+import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
 import {
@@ -144,6 +145,8 @@ export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) =>
   const ref = useRef<THREE.Group>(null!)
   useRegistry(storeNode.id, 'skylight', ref)
   const handlers = useNodeEvents(storeNode, 'skylight')
+
+  useFollowSegmentDrag(ref, storeNode.roofSegmentId)
 
   const liveOverrides = useLiveNodeOverrides((state) => state.get(storeNode.id))
   const node = useMemo(

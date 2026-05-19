@@ -12,6 +12,7 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { Brush, SUBTRACTION } from 'three-bvh-csg'
 import { computeBoundsTree } from 'three-mesh-bvh'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
+import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
 import {
@@ -1008,6 +1009,8 @@ export const ChimneyRenderer = ({ node: storeNode }: { node: ChimneyNode }) => {
   useRegistry(storeNode.id, 'chimney', ref)
   const isTransient = !!(storeNode.metadata as Record<string, unknown> | null)?.isTransient
   const handlers = useNodeEvents(storeNode, 'chimney')
+
+  useFollowSegmentDrag(ref, storeNode.roofSegmentId)
 
   // Slider drags write into useLiveNodeOverrides for live preview without
   // touching the scene store. We split the overrides into two paths:
