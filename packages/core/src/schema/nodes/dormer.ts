@@ -16,20 +16,16 @@ export const DormerNode = BaseNode.extend({
   rotation: z.number().default(0),
   surfaceNormal: z.tuple([z.number(), z.number(), z.number()]).optional(),
 
-  width: z.number().default(2.0),
-  depth: z.number().default(1.5),
-  height: z.number().default(1.2),
+  width: z.number().default(2.59),
+  depth: z.number().default(5.0),
+  height: z.number().default(0.2),
 
   roofType: RoofType.default('gable'),
-  roofHeight: z.number().default(0.6),
+  roofHeight: z.number().default(0.83),
 }).describe(
   dedent`
   Dormer node — a small house-shaped protrusion sitting on top of a roof
-  segment. Rendered with the same walls+roof geometry as a roof segment, just
-  smaller. Does not cut the host roof.
-  - roofSegmentId: id of the host RoofSegmentNode
-  - position: segment-local coordinates ([u, _, v])
-  - rotation: yaw on the segment surface
+  segment.
   - width / depth / height: footprint and wall height
   - roofType / roofHeight: dormer's own roof shape and pitch
   `,

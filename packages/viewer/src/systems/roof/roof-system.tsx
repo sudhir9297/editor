@@ -84,11 +84,12 @@ export const RoofSystem = () => {
       const node = nodes[id]
       if (!node) return
 
-      // A chimney, skylight, or solar-panel edit dirties its host roof so the merged geometry rebuilds.
+      // A chimney, skylight, solar-panel, or dormer edit dirties its host roof so the merged geometry rebuilds.
       if (
         node.type === 'chimney' ||
         node.type === 'skylight' ||
-        node.type === 'solar-panel'
+        node.type === 'solar-panel' ||
+        node.type === 'dormer'
       ) {
         const seg = (node as { roofSegmentId?: string }).roofSegmentId
           ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as
@@ -229,9 +230,11 @@ function updateMergedRoofGeometry(
       brush.updateMatrixWorld()
     }
 
-    // --- Chimney & skylight cutouts (segment-local) ---
-    // Subtract each hosted element's vertical cut brush from the segment's
-    // shinSlab, deckSlab, and wallBrush before they merge into the totals.
+    // --- Per-element segment-local processing ---
+    // Chimney & skylight: subtract a custom cut brush from shin/deck/wall.
+    // Dormer: union its inner-cavity brush into the segment's innerBrush so it
+    //   participates in the final totalInner subtraction — the same mechanism
+    //   that gives stacked roof-segments a clean shared cutout.
     let workingShin = brushes.shinSlab
     let workingDeck = brushes.deckSlab
     let workingWall = brushes.wallBrush
@@ -243,6 +246,28 @@ function updateMergedRoofGeometry(
           ? (childElem.metadata as Record<string, unknown>)
           : undefined
       if (elemMeta?.isTransient) continue
+
+      if (childElem.type === 'dormer') {
+        const dormerInner = buildDormerInnerBrush(childElem as DormerNode)
+        if (dormerInner) {
+          try {
+            const nextInner = csgEvaluator.evaluate(
+              brushes.innerBrush,
+              dormerInner,
+              ADDITION,
+            ) as Brush
+            brushes.innerBrush.geometry.dispose()
+            prepareBrushForCSG(nextInner)
+            brushes.innerBrush = nextInner
+          } catch (e) {
+            console.error('Dormer inner-brush union failed:', e)
+          } finally {
+            dormerInner.geometry.dispose()
+          }
+        }
+        continue
+      }
+
       let cut: Brush | null = null
       if (childElem.type === 'chimney') {
         cut = buildChimneyCutBrush(childElem as ChimneyNode, child)
@@ -708,6 +733,16 @@ export function generateDormerGeometry(
   dormer: DormerNode,
   hostSegment: RoofSegmentNode,
 ): THREE.BufferGeometry {
+  // Different roof types want different faces toward the viewer:
+  //  • Gable/hip/etc: long side wall faces front → bake +π/2 yaw + swap
+  //    width<->depth so the user's "width" stays along segment-local X.
+  //  • Shed: the sloped roof itself is the largest visible face, so leave
+  //    the dormer in its natural orientation (no bake, no swap).
+  const isShed = dormer.roofType === 'shed'
+  const yawBake = isShed ? 0 : Math.PI / 2
+  const segWidth = isShed ? dormer.width : dormer.depth
+  const segDepth = isShed ? dormer.depth : dormer.width
+
   const virtualSegment: RoofSegmentNode = {
     object: 'node',
     id: `rseg_dormer_${dormer.id}` as RoofSegmentNode['id'],
@@ -719,8 +754,8 @@ export function generateDormerGeometry(
     position: [0, 0, 0],
     rotation: 0,
     roofType: dormer.roofType,
-    width: Math.max(0.05, dormer.width),
-    depth: Math.max(0.05, dormer.depth),
+    width: Math.max(0.05, segWidth),
+    depth: Math.max(0.05, segDepth),
     wallHeight: Math.max(0.05, dormer.height) + DORMER_DROP_BELOW,
     roofHeight: Math.max(0, dormer.roofHeight),
     wallThickness: 0.05,
@@ -754,11 +789,11 @@ export function generateDormerGeometry(
     hollowWall.geometry.dispose()
     shinDeck.geometry.dispose()
 
-    // Bake the dormer's built-in yaw (+π/2 so the gable faces +X) and drop
-    // the wall foot below the anchor so the host roof slices through it.
+    // Bake the dormer's built-in yaw and drop the wall foot below the anchor
+    // so the host roof slices through it.
     const bakeMatrix = new THREE.Matrix4().compose(
       new THREE.Vector3(0, -DORMER_DROP_BELOW, 0),
-      new THREE.Quaternion().setFromAxisAngle(_yAxis, Math.PI / 2),
+      new THREE.Quaternion().setFromAxisAngle(_yAxis, yawBake),
       _scale,
     )
     csgGeometry(dormerSolid).applyMatrix4(bakeMatrix)
@@ -840,6 +875,10 @@ export function generateDormerGeometry(
       )
     }
     remapRoofShellFaces(resultGeo, virtualSegment)
+    // Split slot-0 wall triangles into two slots so the gable triangle (the
+    // wall area above the eave) can be coloured differently from the
+    // rectangular wall below.
+    splitDormerGableMaterial(resultGeo, dormer.height, DORMER_GABLE_MATERIAL_INDEX)
   } catch (e) {
     console.error('Dormer CSG failed:', e)
     if (dormerSolid) resultGeo = csgGeometry(dormerSolid).clone()
@@ -849,6 +888,74 @@ export function generateDormerGeometry(
   resultGeo.computeVertexNormals()
   ensureUv2Attribute(resultGeo)
   return resultGeo
+}
+
+const DORMER_GABLE_MATERIAL_INDEX = 4
+
+/**
+ * Reassign slot-0 (Wall) triangles whose entire footprint sits above
+ * `wallHeight` to a separate material slot. This lets the renderer colour
+ * the rectangular foot-to-eave wall differently from the gable triangle
+ * above the eave without splitting the CSG into two passes.
+ */
+function splitDormerGableMaterial(
+  geometry: THREE.BufferGeometry,
+  wallHeight: number,
+  gableMatIndex: number,
+): void {
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute | undefined
+  const index = geometry.getIndex()
+  if (!(position && index) || index.count === 0 || geometry.groups.length === 0) return
+
+  const triangleCount = index.count / 3
+  if (triangleCount === 0) return
+
+  const triangleMats = new Array<number>(triangleCount).fill(0)
+  for (const g of geometry.groups) {
+    const startTri = Math.floor(g.start / 3)
+    const endTri = Math.floor((g.start + g.count) / 3)
+    const mat = g.materialIndex ?? 0
+    for (let i = startTri; i < endTri; i++) triangleMats[i] = mat
+  }
+
+  const epsilon = 0.001
+  for (let i = 0; i < triangleCount; i++) {
+    if (triangleMats[i] !== 0) continue
+    const a = index.getX(i * 3)
+    const b = index.getX(i * 3 + 1)
+    const c = index.getX(i * 3 + 2)
+    const ya = position.getY(a)
+    const yb = position.getY(b)
+    const yc = position.getY(c)
+    if (ya > wallHeight + epsilon && yb > wallHeight + epsilon && yc > wallHeight + epsilon) {
+      triangleMats[i] = gableMatIndex
+    }
+  }
+
+  const sortedTri = Array.from({ length: triangleCount }, (_, i) => i)
+  sortedTri.sort((a, b) => (triangleMats[a] ?? 0) - (triangleMats[b] ?? 0))
+
+  const newIdx = new Uint32Array(index.count)
+  for (let i = 0; i < sortedTri.length; i++) {
+    const ti = sortedTri[i] as number
+    newIdx[i * 3] = index.getX(ti * 3)
+    newIdx[i * 3 + 1] = index.getX(ti * 3 + 1)
+    newIdx[i * 3 + 2] = index.getX(ti * 3 + 2)
+  }
+  geometry.setIndex(new THREE.BufferAttribute(newIdx, 1))
+
+  geometry.clearGroups()
+  let groupStart = 0
+  let curMat = triangleMats[sortedTri[0] as number] as number
+  for (let i = 1; i < sortedTri.length; i++) {
+    const mat = triangleMats[sortedTri[i] as number] as number
+    if (mat !== curMat) {
+      geometry.addGroup(groupStart, i * 3 - groupStart, curMat)
+      groupStart = i * 3
+      curMat = mat
+    }
+  }
+  geometry.addGroup(groupStart, sortedTri.length * 3 - groupStart, curMat)
 }
 
 export function generateRoofSegmentGeometry(node: RoofSegmentNode): THREE.BufferGeometry {
@@ -1407,6 +1514,69 @@ export function buildSkylightCutBrush(
   const brush = new Brush(geo, dummyMats)
   brush.updateMatrixWorld()
   return brush
+}
+
+// Build the dormer's interior-cavity brush in HOST-SEGMENT-LOCAL space, so it
+// can be unioned into the segment's innerBrush. After accumulation it joins
+// totalInner and is subtracted from the merged roof shell — same mechanism
+// that produces clean cutouts where one roof segment sits on another.
+//
+// The geometry mirrors generateDormerGeometry's virtualSegment + bakeMatrix
+// exactly: build the inner brush in virtual-segment-local, then apply the
+// dormer's bake (yaw + -DORMER_DROP_BELOW translate), then the dormer's
+// segment-local position + rotation.
+export function buildDormerInnerBrush(dormer: DormerNode): Brush | null {
+  const isShed = dormer.roofType === 'shed'
+  const yawBake = isShed ? 0 : Math.PI / 2
+  const segWidth = isShed ? dormer.width : dormer.depth
+  const segDepth = isShed ? dormer.depth : dormer.width
+
+  const virtualSegment: RoofSegmentNode = {
+    object: 'node',
+    id: `rseg_dormer_inner_${dormer.id}` as RoofSegmentNode['id'],
+    type: 'roof-segment',
+    parentId: null,
+    visible: true,
+    metadata: null,
+    children: [],
+    position: [0, 0, 0],
+    rotation: 0,
+    roofType: dormer.roofType,
+    width: Math.max(0.05, segWidth),
+    depth: Math.max(0.05, segDepth),
+    wallHeight: Math.max(0.05, dormer.height) + DORMER_DROP_BELOW,
+    roofHeight: Math.max(0, dormer.roofHeight),
+    wallThickness: 0.05,
+    deckThickness: 0.04,
+    overhang: 0.08,
+    shingleThickness: 0.02,
+  }
+
+  const brushes = getRoofSegmentBrushes(virtualSegment)
+  if (!brushes) return null
+
+  // We only need the inner cavity — dispose the shell brushes.
+  brushes.shinSlab.geometry.dispose()
+  brushes.deckSlab.geometry.dispose()
+  brushes.wallBrush.geometry.dispose()
+  brushes.shinTopBrush.geometry.dispose()
+  const innerBrush = brushes.innerBrush
+
+  // virtual-segment-local → dormer-mesh-local → host-segment-local
+  const bake = new THREE.Matrix4().compose(
+    new THREE.Vector3(0, -DORMER_DROP_BELOW, 0),
+    new THREE.Quaternion().setFromAxisAngle(_yAxis, yawBake),
+    _scale,
+  )
+  const place = new THREE.Matrix4().compose(
+    new THREE.Vector3(dormer.position[0], dormer.position[1], dormer.position[2]),
+    new THREE.Quaternion().setFromAxisAngle(_yAxis, dormer.rotation),
+    _scale,
+  )
+  const full = place.multiply(bake)
+  csgGeometry(innerBrush).applyMatrix4(full)
+  prepareBrushForCSG(innerBrush)
+  return innerBrush
 }
 
 type SurfaceFrame = {

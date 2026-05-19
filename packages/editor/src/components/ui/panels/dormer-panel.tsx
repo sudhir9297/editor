@@ -205,7 +205,7 @@ export function DormerPanel() {
       title={node.name || 'Dormer'}
       width={300}
     >
-      <PanelSection title="Roof Type">
+      <PanelSection title="Dormer Type">
         <SegmentedControl
           onChange={(v) => commitProp({ roofType: v })}
           options={ROOF_TYPE_OPTIONS}
