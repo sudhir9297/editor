@@ -98,14 +98,13 @@ export function RoofPanel() {
       roofSegmentId: firstSegment.id,
       parentId: firstSegment.id,
       position: [0, 0, 0],
+      visible: false,
+      metadata: { isNew: true },
     })
     createNode(skylight, firstSegment.id as AnyNodeId)
-    updateNode(firstSegment.id as AnyNode['id'], {
-      children: [...(firstSegment.children ?? []), skylight.id],
-    })
     setSelection({ selectedIds: [skylight.id as AnyNode['id']] })
-    sfxEmitter.emit('sfx:structure-build')
-  }, [node, segments, createNode, updateNode, setSelection])
+    setMovingNode(skylight)
+  }, [node, segments, createNode, setSelection, setMovingNode])
 
   const handleAddSolarPanel = useCallback(() => {
     if (!node) return
@@ -252,61 +251,71 @@ export function RoofPanel() {
       </PanelSection>
 
       <PanelSection title="Elements">
-        <div className="flex flex-col gap-1">
-          {chimneys.map((chimney, i) => (
-            <button
-              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
-              key={chimney.id}
-              onClick={() => setSelection({ selectedIds: [chimney.id as AnyNode['id']] })}
-              type="button"
-            >
-              <span className="truncate">{chimney.name || `Chimney ${i + 1}`}</span>
-              <span className="text-muted-foreground text-xs">chimney</span>
-            </button>
-          ))}
-          {skylights.map((skylight, i) => (
-            <button
-              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
-              key={skylight.id}
-              onClick={() => setSelection({ selectedIds: [skylight.id as AnyNode['id']] })}
-              type="button"
-            >
-              <span className="truncate">{skylight.name || `Skylight ${i + 1}`}</span>
-              <span className="text-muted-foreground text-xs">skylight</span>
-            </button>
-          ))}
-          {solarPanels.map((panel, i) => (
-            <button
-              className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
-              key={panel.id}
-              onClick={() => setSelection({ selectedIds: [panel.id as AnyNode['id']] })}
-              type="button"
-            >
-              <span className="truncate">{panel.name || `Solar Panel ${i + 1}`}</span>
-              <span className="text-muted-foreground text-xs">solar panel</span>
-            </button>
-          ))}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            {chimneys.map((chimney, i) => (
+              <button
+                className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+                key={chimney.id}
+                onClick={() => setSelection({ selectedIds: [chimney.id as AnyNode['id']] })}
+                type="button"
+              >
+                <span className="truncate">{chimney.name || `Chimney ${i + 1}`}</span>
+                <span className="text-muted-foreground text-xs">chimney</span>
+              </button>
+            ))}
+            <ActionGroup>
+              <ActionButton
+                disabled={segments.length === 0}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label="Add Chimney"
+                onClick={handleAddChimney}
+              />
+            </ActionGroup>
+          </div>
+          <div className="flex flex-col gap-1">
+            {skylights.map((skylight, i) => (
+              <button
+                className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+                key={skylight.id}
+                onClick={() => setSelection({ selectedIds: [skylight.id as AnyNode['id']] })}
+                type="button"
+              >
+                <span className="truncate">{skylight.name || `Skylight ${i + 1}`}</span>
+                <span className="text-muted-foreground text-xs">skylight</span>
+              </button>
+            ))}
+            <ActionGroup>
+              <ActionButton
+                disabled={segments.length === 0}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label="Add Skylight"
+                onClick={handleAddSkylight}
+              />
+            </ActionGroup>
+          </div>
+          <div className="flex flex-col gap-1">
+            {solarPanels.map((panel, i) => (
+              <button
+                className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+                key={panel.id}
+                onClick={() => setSelection({ selectedIds: [panel.id as AnyNode['id']] })}
+                type="button"
+              >
+                <span className="truncate">{panel.name || `Solar Panel ${i + 1}`}</span>
+                <span className="text-muted-foreground text-xs">solar panel</span>
+              </button>
+            ))}
+            <ActionGroup>
+              <ActionButton
+                disabled={segments.length === 0}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label="Add Solar Panel"
+                onClick={handleAddSolarPanel}
+              />
+            </ActionGroup>
+          </div>
         </div>
-        <ActionGroup>
-          <ActionButton
-            disabled={segments.length === 0}
-            icon={<Plus className="h-3.5 w-3.5" />}
-            label="Add Chimney"
-            onClick={handleAddChimney}
-          />
-          <ActionButton
-            disabled={segments.length === 0}
-            icon={<Plus className="h-3.5 w-3.5" />}
-            label="Add Skylight"
-            onClick={handleAddSkylight}
-          />
-          <ActionButton
-            disabled={segments.length === 0}
-            icon={<Plus className="h-3.5 w-3.5" />}
-            label="Add Solar Panel"
-            onClick={handleAddSolarPanel}
-          />
-        </ActionGroup>
       </PanelSection>
 
       <PanelSection title="Position">

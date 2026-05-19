@@ -31,6 +31,8 @@ export const SkylightNode = BaseNode.extend({
   curbHeight: z.number().default(0.1),
 
   cutoutOffset: z.number().default(0.01),
+
+  surfaceNormal: z.tuple([z.number(), z.number(), z.number()]).optional(),
 }).describe(
   dedent`
   Skylight node — a framed glass opening hosted on a roof segment.

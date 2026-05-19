@@ -14,12 +14,7 @@ import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu
 import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
-import {
-  csgEvaluator,
-  csgGeometry,
-  getRoofSegmentBrushes,
-  prepareBrushForCSG,
-} from '../../../systems/roof/roof-system'
+import { csgEvaluator, csgGeometry, getRoofOuterSurfaceFrameAtPoint } from '../../../systems/roof/roof-system'
 
 const defaultFrameMaterial = new MeshStandardNodeMaterial({
   color: 0x555555,
@@ -40,10 +35,16 @@ const defaultGlassMaterial = new MeshPhysicalNodeMaterial({
 
 const visibleDummyMat = new THREE.MeshBasicMaterial()
 
-function buildSkylightGeometry(
-  node: SkylightNode,
-  segment: RoofSegmentNode,
-): { frame: THREE.BufferGeometry; glass: THREE.BufferGeometry } | null {
+/**
+ * Build a frame ring geometry centered at origin with Y as the depth axis
+ * (perpendicular to the glass plane). The geometry is NOT positioned or rotated —
+ * the React component handles that via group transforms so frame and glass
+ * share the same coordinate system and can never misalign.
+ *
+ * Y=0 is the roof surface contact point. Frame extends downward (-Y) into the
+ * roof deck by frameDepth, and upward (+Y) by curbHeight.
+ */
+function buildFrameGeometry(node: SkylightNode): THREE.BufferGeometry | null {
   const w = node.width
   const h = node.height
   const ft = node.frameThickness
@@ -89,56 +90,10 @@ function buildSkylightGeometry(
     return null
   }
 
-  frameGeo.translate(0, curbH / 2, 0)
+  // Shift so Y=0 is the roof surface contact: frame extends down by fd, up by curbH
+  frameGeo.translate(0, -totalDepth / 2 + curbH, 0)
 
-  const segBrushes = getRoofSegmentBrushes(segment)
-  if (segBrushes) {
-    const { wallBrush, shinTopBrush } = segBrushes
-    try {
-      frameGeo.computeVertexNormals()
-      const pc = frameGeo.getAttribute('position').count
-      frameGeo.clearGroups()
-      frameGeo.addGroup(0, frameGeo.getIndex()?.count ?? pc, 0)
-      ;(frameGeo as any).computeBoundsTree = computeBoundsTree
-      ;(frameGeo as any).computeBoundsTree({ maxLeafSize: 10 })
-
-      const frameBrush = new Brush(frameGeo, visibleDummyMat as any)
-      frameBrush.updateMatrixWorld()
-
-      const step1 = csgEvaluator.evaluate(frameBrush, wallBrush, SUBTRACTION) as Brush
-      prepareBrushForCSG(step1)
-      const trimmed = csgEvaluator.evaluate(step1, shinTopBrush, SUBTRACTION) as Brush
-      const trimmedGeo = csgGeometry(trimmed).clone()
-      const tic = trimmedGeo.getIndex()?.count ?? 0
-      trimmedGeo.clearGroups()
-      if (tic > 0) trimmedGeo.addGroup(0, tic, 0)
-      trimmedGeo.computeVertexNormals()
-
-      frameGeo.dispose()
-      step1.geometry.dispose()
-      trimmed.geometry.dispose()
-      frameGeo = trimmedGeo
-    } catch (e) {
-      console.error('Skylight frame trim CSG failed:', e)
-    } finally {
-      segBrushes.deckSlab.geometry.dispose()
-      segBrushes.shinSlab.geometry.dispose()
-      segBrushes.wallBrush.geometry.dispose()
-      segBrushes.innerBrush.geometry.dispose()
-      segBrushes.shinTopBrush.geometry.dispose()
-    }
-  }
-
-  if (Math.abs(node.rotation) > 1e-4) frameGeo.rotateY(node.rotation)
-  frameGeo.translate(node.position[0], 0, node.position[2])
-
-  const glassGeo = new THREE.PlaneGeometry(w - 0.01, h - 0.01)
-  glassGeo.rotateX(-Math.PI / 2)
-  glassGeo.translate(0, curbH + fd / 2, 0)
-  if (Math.abs(node.rotation) > 1e-4) glassGeo.rotateY(node.rotation)
-  glassGeo.translate(node.position[0], 0, node.position[2])
-
-  return { frame: frameGeo, glass: glassGeo }
+  return frameGeo
 }
 
 export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) => {
@@ -154,45 +109,16 @@ export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) =>
     [storeNode, liveOverrides],
   )
 
-  const geometryNode = useMemo(() => {
-    if (!liveOverrides) return storeNode
-    const rest = { ...(liveOverrides as Record<string, unknown>) }
-    delete rest.position
-    delete rest.rotation
-    return { ...storeNode, ...rest } as SkylightNode
-  }, [storeNode, liveOverrides])
-
-  const liveDeltaX = (node.position[0] ?? 0) - (storeNode.position[0] ?? 0)
-  const liveDeltaZ = (node.position[2] ?? 0) - (storeNode.position[2] ?? 0)
-  const liveDeltaRot = (node.rotation ?? 0) - (storeNode.rotation ?? 0)
-
   const segment = useScene((state) =>
     node.roofSegmentId
       ? (state.nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
       : undefined,
   )
 
-  const geometry = useMemo(() => {
-    if (!segment) return null
-    return buildSkylightGeometry(geometryNode, segment)
+  const frameGeo = useMemo(() => {
+    return buildFrameGeometry(node)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    segment?.position[0],
-    segment?.position[1],
-    segment?.position[2],
-    segment?.rotation,
-    segment?.wallHeight,
-    segment?.roofHeight,
-    segment?.roofType,
-    segment?.width,
-    segment?.depth,
-    segment?.wallThickness,
-    segment?.deckThickness,
-    segment?.overhang,
-    segment?.shingleThickness,
-    geometryNode.position[0],
-    geometryNode.position[2],
-    geometryNode.rotation,
     node.width,
     node.height,
     node.frameThickness,
@@ -204,10 +130,9 @@ export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) =>
 
   useEffect(() => {
     return () => {
-      geometry?.frame.dispose()
-      geometry?.glass.dispose()
+      frameGeo?.dispose()
     }
-  }, [geometry])
+  }, [frameGeo])
 
   const framePreset = createMaterialFromPresetRef(node.materialPreset)
   const frameExplicit = node.material ? createMaterial(node.material) : null
@@ -217,7 +142,24 @@ export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) =>
   const glassExplicit = node.glassMaterial ? createMaterial(node.glassMaterial) : null
   const glassMaterial = glassExplicit ?? glassPreset ?? defaultGlassMaterial
 
-  if (!segment || !geometry) return null
+  const surfaceFrame = useMemo(() => {
+    if (!segment) {
+      return { point: new THREE.Vector3(), normal: new THREE.Vector3(0, 1, 0) }
+    }
+    return getRoofOuterSurfaceFrameAtPoint(segment, node.position[0], node.position[2])
+  }, [node.position[0], node.position[2], segment])
+
+  const surfaceY = surfaceFrame.point.y
+
+  const slopeQuat = useMemo(() => {
+    if (!segment) return new THREE.Quaternion()
+    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), surfaceFrame.normal)
+  }, [segment, node.position[0], node.position[2]])
+
+  const hasCurb = node.curb ?? false
+  const curbH = hasCurb ? Math.max(0, node.curbHeight ?? 0.1) : 0
+
+  if (!segment || !frameGeo) return null
 
   return (
     <group
@@ -227,20 +169,28 @@ export const SkylightRenderer = ({ node: storeNode }: { node: SkylightNode }) =>
       visible={node.visible}
       {...handlers}
     >
-      <group position={[liveDeltaX, 0, liveDeltaZ]} rotation-y={liveDeltaRot}>
-        <mesh
-          castShadow
-          geometry={geometry.frame}
-          material={frameMaterial}
-          name="skylight-surface"
-          receiveShadow
-        />
-        <mesh
-          geometry={geometry.glass}
-          material={glassMaterial}
-          name="skylight-glass"
-          receiveShadow
-        />
+      {/* Single transform hierarchy: position on surface → tilt to slope → yaw */}
+      <group position={[node.position[0], surfaceY, node.position[2]]}>
+        <group quaternion={slopeQuat}>
+          <group rotation-y={node.rotation}>
+            <mesh
+              castShadow
+              geometry={frameGeo}
+              material={frameMaterial}
+              name="skylight-surface"
+              receiveShadow
+            />
+            <mesh
+              material={glassMaterial}
+              name="skylight-glass"
+              position={[0, curbH, 0]}
+              receiveShadow
+              rotation-x={-Math.PI / 2}
+            >
+              <planeGeometry args={[node.width - 0.01, node.height - 0.01]} />
+            </mesh>
+          </group>
+        </group>
       </group>
     </group>
   )

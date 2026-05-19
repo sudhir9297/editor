@@ -49,6 +49,8 @@ const _uvFaceNormal = new THREE.Vector3()
 const _uvWorldDown = new THREE.Vector3(0, -1, 0)
 const _uvDownSlope = new THREE.Vector3()
 const _uvAcrossSlope = new THREE.Vector3()
+const _tmpVec3A = new THREE.Vector3()
+const _tmpVec3B = new THREE.Vector3()
 
 // Pending merged-roof updates carried across frames (for throttling)
 const pendingRoofUpdates = new Set<AnyNodeId>()
@@ -1207,18 +1209,31 @@ export function buildSkylightCutBrush(
   const inflate = Math.max(0, skylight.cutoutOffset ?? 0.01)
   const w = Math.max(0.05, skylight.width + 2 * skylight.frameThickness + 2 * inflate)
   const d = Math.max(0.05, skylight.height + 2 * skylight.frameThickness + 2 * inflate)
-  const peakY =
-    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
-  const topY = peakY + 0.5
-  const baseY = -0.5
-  const h = topY - baseY
-  const centerY = (topY + baseY) / 2
 
+  const lx = skylight.position[0]
+  const lz = skylight.position[2]
+
+  const surfaceFrame = getRoofOuterSurfaceFrameAtPoint(segment, lx, lz)
+  const surfaceY = surfaceFrame.point.y
+  const localNormal = surfaceFrame.normal
+
+  const h = 2.0
   const geo = new THREE.BoxGeometry(w, h, d)
+
+  // Yaw in the box's own (un-tilted) frame so it remains a rotation about the
+  // surface normal once tilted. Applying rotateY after the tilt would twist the
+  // cutout around world-Y on sloped roofs.
   if (Math.abs(skylight.rotation) > 1e-4) {
     geo.rotateY(skylight.rotation)
   }
-  geo.translate(skylight.position[0], centerY, skylight.position[2])
+
+  if (localNormal.y < 0.9999) {
+    const up = new THREE.Vector3(0, 1, 0)
+    const quat = new THREE.Quaternion().setFromUnitVectors(up, localNormal)
+    geo.applyQuaternion(quat)
+  }
+
+  geo.translate(lx, surfaceY, lz)
 
   const indexCount = geo.getIndex()?.count ?? 0
   geo.clearGroups()
@@ -1228,6 +1243,220 @@ export function buildSkylightCutBrush(
   const brush = new Brush(geo, dummyMats)
   brush.updateMatrixWorld()
   return brush
+}
+
+type SurfaceFrame = {
+  point: THREE.Vector3
+  normal: THREE.Vector3
+}
+
+const _surfaceRay = new THREE.Ray()
+const _surfaceOrigin = new THREE.Vector3()
+const _surfaceDir = new THREE.Vector3(0, -1, 0)
+const _surfaceHits: THREE.Intersection[] = []
+const _surfaceV0 = new THREE.Vector3()
+const _surfaceV1 = new THREE.Vector3()
+const _surfaceV2 = new THREE.Vector3()
+const _surfaceFaceNormal = new THREE.Vector3()
+
+/**
+ * Returns the outer roof surface frame (point + normal) at a given segment-local XZ.
+ * This is used for skylight placement + cut direction so cutouts remain perpendicular
+ * to the true roof surface even on multi-slope roofs (gambrel/mansard/dutch).
+ */
+export function getRoofOuterSurfaceFrameAtPoint(
+  segment: RoofSegmentNode,
+  lx: number,
+  lz: number,
+): SurfaceFrame {
+  const { roofType, width, depth, wallHeight, roofHeight, wallThickness, deckThickness, overhang, shingleThickness } =
+    segment
+
+  const activeRh = roofType === 'flat' ? 0 : roofHeight
+
+  if (roofType === 'flat' || activeRh === 0) {
+    return {
+      point: new THREE.Vector3(lx, wallHeight + deckThickness + shingleThickness, lz),
+      normal: new THREE.Vector3(0, 1, 0),
+    }
+  }
+
+  let run = Math.min(width, depth) / 2
+  let rise = activeRh
+  if (roofType === 'shed') {
+    run = depth
+  }
+  if (roofType === 'gable') {
+    run = depth / 2
+  }
+  if (roofType === 'gambrel') {
+    run = depth / 4
+    rise = activeRh * 0.6
+  }
+  if (roofType === 'mansard') {
+    run = Math.min(width, depth) * 0.15
+    rise = activeRh * 0.7
+  }
+  if (roofType === 'dutch') {
+    run = Math.min(width, depth) * 0.25
+    rise = activeRh * 0.5
+  }
+
+  const tanTheta = run > 0 ? rise / run : 0
+  const cosTheta = Math.cos(Math.atan2(rise, run)) || 1
+  const sinTheta = Math.sin(Math.atan2(rise, run)) || 0
+
+  const verticalRt = deckThickness / cosTheta
+  const horizontalOverhang = overhang * cosTheta
+  const deckExt = wallThickness / 2 + horizontalOverhang
+
+  const stSin = shingleThickness * sinTheta
+  const stCos = shingleThickness * cosTheta
+
+  // Mirror the shingle-top volume sizing used in getRoofSegmentBrushes()
+  const shinBotW = Math.max(0.01, width + 2 * deckExt)
+  const shinBotD = Math.max(0.01, depth + 2 * deckExt)
+  const deckDrop = deckExt * tanTheta
+  const shinBotWh = wallHeight - deckDrop + verticalRt
+
+  let shinBotRh = activeRh
+  if (activeRh > 0) {
+    shinBotRh = activeRh + deckDrop
+    if (roofType === 'shed') shinBotRh = activeRh + 2 * deckDrop
+  }
+
+  let shinTopW = shinBotW
+  let shinTopD = shinBotD
+  let transZ = 0
+  if (['hip', 'mansard', 'dutch'].includes(roofType)) {
+    shinTopW += 2 * stSin
+    shinTopD += 2 * stSin
+  } else {
+    shinTopW += 2 * stSin
+    shinTopD += 2 * stSin
+    // For gable/shed/gambrel, the shingle top expands along +Z only (ridge direction kept stable).
+    transZ = stSin
+  }
+
+  const shinTopWh = shinBotWh + stCos
+  const shinTopRh = shinBotRh + stCos
+
+  const topBaseY = 0
+
+  const baseI = Math.min(width, depth) * 0.25
+  const getInsets = (
+    wh: number,
+    baseY: number,
+    isVoid: boolean,
+    wV: number,
+    dV: number,
+  ): Insets => {
+    const inset = Math.max(0.01, baseI)
+    let iF = 0
+    let iB = 0
+    let iL = 0
+    let iR = 0
+
+    if (roofType === 'hip') {
+      iF = inset
+      iB = inset
+      iL = inset
+      iR = inset
+    } else if (roofType === 'gable' || roofType === 'gambrel') {
+      iL = inset
+      iR = inset
+    } else if (roofType === 'mansard' || roofType === 'dutch') {
+      iF = inset
+      iB = inset
+      iL = inset
+      iR = inset
+    } else if (roofType === 'shed') {
+      iF = inset
+    }
+
+    let structuralI = baseI
+    if (isVoid) {
+      structuralI += shingleThickness
+    }
+
+    return { iF, iB, iL, iR, dutchI: structuralI }
+  }
+
+  const insetsTop = getInsets(shinTopWh, topBaseY, false, shinTopW, shinTopD)
+  const topFaces = getModuleFaces(
+    roofType,
+    shinTopW,
+    shinTopD,
+    shinTopWh,
+    shinTopRh,
+    topBaseY,
+    insetsTop,
+    width,
+    depth,
+    tanTheta,
+  )
+
+  const topGeo = createGeometryFromFaces(topFaces, (normal) =>
+    normal.y > SHINGLE_SURFACE_EPSILON ? 3 : 1,
+  )
+  if (transZ !== 0) topGeo.translate(0, 0, transZ)
+  topGeo.computeBoundingBox()
+
+  // Raycast from far above at this XZ to find the outer surface point and normal.
+  const topY = wallHeight + activeRh + deckThickness + shingleThickness + 10
+  _surfaceOrigin.set(lx, topY, lz)
+  _surfaceRay.set(_surfaceOrigin, _surfaceDir)
+  _surfaceHits.length = 0
+
+  // Manual ray-triangle tests avoids instantiating a Mesh/Raycaster and keeps this allocation-free.
+  const pos = topGeo.getAttribute('position')
+  const index = topGeo.getIndex()
+  if (!pos || !index) {
+    topGeo.dispose()
+    return {
+      point: new THREE.Vector3(lx, wallHeight, lz),
+      normal: new THREE.Vector3(0, 1, 0),
+    }
+  }
+
+  let bestT = Number.POSITIVE_INFINITY
+  let bestPoint: THREE.Vector3 | null = null
+  let bestNormal: THREE.Vector3 | null = null
+  for (let i = 0; i < index.count; i += 3) {
+    const a = index.getX(i)
+    const b = index.getX(i + 1)
+    const c = index.getX(i + 2)
+    _surfaceV0.fromBufferAttribute(pos as any, a)
+    _surfaceV1.fromBufferAttribute(pos as any, b)
+    _surfaceV2.fromBufferAttribute(pos as any, c)
+
+    const hit = _surfaceRay.intersectTriangle(_surfaceV0, _surfaceV1, _surfaceV2, false, _tmpVec3A)
+    if (!hit) continue
+    const t = hit.distanceTo(_surfaceOrigin)
+    if (t < bestT) {
+      bestT = t
+      bestPoint = hit.clone()
+      _surfaceFaceNormal
+        .subVectors(_surfaceV1, _surfaceV0)
+        .cross(_tmpVec3B.subVectors(_surfaceV2, _surfaceV0))
+        .normalize()
+      bestNormal = _surfaceFaceNormal.clone()
+    }
+  }
+
+  topGeo.dispose()
+
+  if (!bestPoint || !bestNormal) {
+    return {
+      point: new THREE.Vector3(lx, wallHeight, lz),
+      normal: new THREE.Vector3(0, 1, 0),
+    }
+  }
+
+  // Ensure normal points "outward" (up-ish)
+  if (bestNormal.y < 0) bestNormal.multiplyScalar(-1)
+
+  return { point: bestPoint, normal: bestNormal }
 }
 
 function ensureUv2Attribute(geometry: THREE.BufferGeometry) {

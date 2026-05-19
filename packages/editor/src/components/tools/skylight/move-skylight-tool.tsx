@@ -1,14 +1,13 @@
 import '../../../three-types'
 
 import {
-  type AnyNode,
   type AnyNodeId,
-  type SkylightNode,
   emitter,
   type RoofEvent,
   type RoofNode,
   type RoofSegmentNode,
   sceneRegistry,
+  type SkylightNode,
   useScene,
 } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
@@ -25,7 +24,7 @@ function resolveSegmentFromWorldPoint(
   worldY: number,
   worldZ: number,
   state: ReturnType<typeof useScene.getState>,
-): { segment: RoofSegmentNode; localX: number; localZ: number } | null {
+): { segment: RoofSegmentNode; localX: number; localY: number; localZ: number } | null {
   const worldPt = new THREE.Vector3(worldX, worldY, worldZ)
   for (const childId of roof.children ?? []) {
     const seg = state.nodes[childId as AnyNodeId] as RoofSegmentNode | undefined
@@ -35,7 +34,7 @@ function resolveSegmentFromWorldPoint(
     segObj.updateWorldMatrix(true, false)
     const local = segObj.worldToLocal(worldPt.clone())
     if (Math.abs(local.x) <= seg.width / 2 && Math.abs(local.z) <= seg.depth / 2) {
-      return { segment: seg, localX: local.x, localZ: local.z }
+      return { segment: seg, localX: local.x, localY: local.y, localZ: local.z }
     }
   }
   return null
@@ -55,6 +54,8 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
 
   const previewRef = useRef<THREE.Group>(null!)
   const [previewPos, setPreviewPos] = useState<[number, number, number]>([0, 0, 0])
+  const [previewQuat, setPreviewQuat] = useState<[number, number, number, number]>([0, 0, 0, 1])
+  const [hasHit, setHasHit] = useState(false)
 
   const previewGeo = useMemo(() => {
     const outerW = node.width + 2 * node.frameThickness
@@ -82,6 +83,7 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
       typeof node.metadata === 'object' && node.metadata !== null
         ? (node.metadata as Record<string, unknown>)
         : {}
+    const isNew = !!meta.isNew
     useScene.getState().updateNode(node.id as AnyNodeId, {
       metadata: { ...meta, isTransient: true },
     })
@@ -102,24 +104,43 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
 
     let lastSnapX = 0
     let lastSnapZ = 0
+    let lastWorldNormal: THREE.Vector3 | undefined
+
+    const captureNormal = (event: RoofEvent) => {
+      if (!event.normal) return
+      const n = new THREE.Vector3(event.normal[0], event.normal[1], event.normal[2])
+      const nm = new THREE.Matrix3().getNormalMatrix(event.object.matrixWorld)
+      n.applyMatrix3(nm).normalize()
+      lastWorldNormal = n
+
+      const up = new THREE.Vector3(0, 1, 0)
+      const right = new THREE.Vector3().crossVectors(up, n)
+      if (right.lengthSq() < 1e-6) right.set(1, 0, 0)
+      else right.normalize()
+      const forward = new THREE.Vector3().crossVectors(right, n).normalize()
+      const m = new THREE.Matrix4().makeBasis(right, n, forward)
+      const q = new THREE.Quaternion().setFromRotationMatrix(m)
+      setPreviewQuat([q.x, q.y, q.z, q.w])
+    }
 
     const onRoofMove = (event: RoofEvent) => {
-      const wx = event.position[0]
-      const wy = event.position[1]
-      const wz = event.position[2]
-      const sx = Math.round(wx * 20) / 20
-      const sz = Math.round(wz * 20) / 20
+      const sx = Math.round(event.position[0] * 20) / 20
+      const sz = Math.round(event.position[2] * 20) / 20
       if (sx !== lastSnapX || sz !== lastSnapZ) {
         sfxEmitter.emit('sfx:grid-snap')
         lastSnapX = sx
         lastSnapZ = sz
       }
-      setPreviewPos(worldToBuildingLocal(wx, wy, wz))
+      captureNormal(event)
+      setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setHasHit(true)
       event.stopPropagation()
     }
 
     const onRoofEnter = (event: RoofEvent) => {
+      captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setHasHit(true)
       event.stopPropagation()
     }
 
@@ -137,16 +158,7 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
       if (!hit) return
 
       const targetSegmentId = hit.segment.id as AnyNodeId
-
-      let finalRotation = original.rotation
-      if (original.roofSegmentId && original.roofSegmentId !== (targetSegmentId as string)) {
-        const prevSeg = st.nodes[original.roofSegmentId as AnyNodeId] as
-          | RoofSegmentNode
-          | undefined
-        if (prevSeg) {
-          finalRotation = prevSeg.rotation + original.rotation - hit.segment.rotation
-        }
-      }
+      const finalRotation = original.rotation
 
       wasCommitted = true
 
@@ -159,11 +171,22 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
       })
       useScene.temporal.getState().resume()
 
+      captureNormal(event)
+      let worldNormalArr: [number, number, number] | undefined
+      if (lastWorldNormal) {
+        worldNormalArr = [lastWorldNormal.x, lastWorldNormal.y, lastWorldNormal.z]
+      } else {
+        const current = st.nodes[node.id as AnyNodeId] as SkylightNode | undefined
+        worldNormalArr = current?.surfaceNormal as [number, number, number] | undefined
+      }
+
       st.updateNode(node.id as AnyNodeId, {
         roofSegmentId: targetSegmentId,
         parentId: targetSegmentId,
-        position: [hit.localX, 0, hit.localZ],
+        position: [hit.localX, hit.localY, hit.localZ],
         rotation: finalRotation,
+        surfaceNormal: worldNormalArr,
+        visible: true,
         metadata: {},
       })
 
@@ -185,6 +208,15 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
 
     const onCancel = () => {
       wasCancelled = true
+
+      if (isNew) {
+        useScene.temporal.getState().resume()
+        useScene.getState().deleteNode(node.id as AnyNodeId)
+        markToolCancelConsumed()
+        exitMoveMode()
+        return
+      }
+
       useScene.getState().updateNode(node.id as AnyNodeId, {
         position: original.position,
         rotation: original.rotation,
@@ -215,35 +247,21 @@ export function MoveSkylightTool({ node }: { node: SkylightNode }) {
       emitter.off('roof:click', onRoofClick)
       emitter.off('tool:cancel', onCancel)
 
-      const current = useScene.getState().nodes[node.id as AnyNodeId] as SkylightNode | undefined
-      const currentMeta = current?.metadata as Record<string, unknown> | undefined
-      if (!(wasCommitted || wasCancelled) && currentMeta?.isTransient) {
-        useScene.getState().updateNode(node.id as AnyNodeId, {
-          position: original.position,
-          rotation: original.rotation,
-          roofSegmentId: original.roofSegmentId as AnyNodeId | undefined,
-          parentId: original.parentId as AnyNodeId | undefined,
-          metadata: original.metadata,
-        })
-        if (original.roofSegmentId) {
-          useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
-        }
-      }
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
       useScene.temporal.getState().resume()
     }
   }, [exitMoveMode, node])
 
-  if (!previewGeo) return null
-
   return (
-    <group position={previewPos} ref={previewRef} rotation-y={node.rotation ?? 0}>
-      <mesh
-        geometry={previewGeo}
-        layers={EDITOR_LAYER}
-        material={previewMaterial}
-      />
+    <group position={previewPos} quaternion={previewQuat} ref={previewRef} visible={hasHit}>
+      <group rotation-y={node.rotation ?? 0}>
+        <mesh
+          geometry={previewGeo}
+          layers={EDITOR_LAYER}
+          material={previewMaterial}
+        />
+      </group>
     </group>
   )
 }
