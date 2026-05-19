@@ -2,6 +2,7 @@ import {
   type AnyNode,
   type AnyNodeId,
   type ChimneyNode,
+  type DormerNode,
   type RoofNode,
   type RoofSegmentNode,
   type RoofType,
@@ -686,6 +687,168 @@ export function getRoofSegmentBrushes(node: RoofSegmentNode): {
   if (innerBrush) innerBrush.geometry.dispose()
 
   return null
+}
+
+const DORMER_DROP_BELOW = 2
+
+/**
+ * Build the trimmed geometry for a dormer hosted on a roof segment.
+ *
+ * The dormer is rendered using the same walls+roof CSG that a roof segment
+ * uses, then the host segment's combined solid is CSG-subtracted from it in
+ * dormer-local space. This removes the parts of the dormer that punch into
+ * the host roof — both the wall skirt below the slope and the back of the
+ * dormer's own roof slabs — without per-vertex deformation.
+ *
+ * The returned geometry is in dormer-mesh-local space: the +π/2 yaw that
+ * makes the dormer's gable end face +X is baked in, and the wall foot sits
+ * DORMER_DROP_BELOW below the anchor so the host roof can slice cleanly.
+ */
+export function generateDormerGeometry(
+  dormer: DormerNode,
+  hostSegment: RoofSegmentNode,
+): THREE.BufferGeometry {
+  const virtualSegment: RoofSegmentNode = {
+    object: 'node',
+    id: `rseg_dormer_${dormer.id}` as RoofSegmentNode['id'],
+    type: 'roof-segment',
+    parentId: null,
+    visible: true,
+    metadata: null,
+    children: [],
+    position: [0, 0, 0],
+    rotation: 0,
+    roofType: dormer.roofType,
+    width: Math.max(0.05, dormer.width),
+    depth: Math.max(0.05, dormer.depth),
+    wallHeight: Math.max(0.05, dormer.height) + DORMER_DROP_BELOW,
+    roofHeight: Math.max(0, dormer.roofHeight),
+    wallThickness: 0.05,
+    deckThickness: 0.04,
+    overhang: 0.08,
+    shingleThickness: 0.02,
+  }
+
+  const dormerBrushes = getRoofSegmentBrushes(virtualSegment)
+  if (!dormerBrushes) {
+    return new THREE.BoxGeometry(virtualSegment.width, dormer.height, virtualSegment.depth)
+  }
+  dormerBrushes.shinTopBrush.geometry.dispose()
+
+  let resultGeo = new THREE.BufferGeometry()
+  let dormerSolid: Brush | null = null
+  let hostSolid: Brush | null = null
+
+  try {
+    const hollowWall = csgEvaluator.evaluate(
+      dormerBrushes.wallBrush,
+      dormerBrushes.innerBrush,
+      SUBTRACTION,
+    ) as Brush
+    const shinDeck = csgEvaluator.evaluate(
+      dormerBrushes.shinSlab,
+      dormerBrushes.deckSlab,
+      ADDITION,
+    ) as Brush
+    dormerSolid = csgEvaluator.evaluate(shinDeck, hollowWall, ADDITION) as Brush
+    hollowWall.geometry.dispose()
+    shinDeck.geometry.dispose()
+
+    // Bake the dormer's built-in yaw (+π/2 so the gable faces +X) and drop
+    // the wall foot below the anchor so the host roof slices through it.
+    const bakeMatrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(0, -DORMER_DROP_BELOW, 0),
+      new THREE.Quaternion().setFromAxisAngle(_yAxis, Math.PI / 2),
+      _scale,
+    )
+    csgGeometry(dormerSolid).applyMatrix4(bakeMatrix)
+    prepareBrushForCSG(dormerSolid)
+
+    const hostBrushes = getRoofSegmentBrushes(hostSegment)
+    if (hostBrushes) {
+      hostBrushes.shinTopBrush.geometry.dispose()
+      // Filled host volume (no inner-cavity subtraction): wallBrush is the
+      // full filled wall, plus the deck and shingle slabs above. This gives
+      // us a solid bounded above by the host's outer shingle surface.
+      const wallPlusDeck = csgEvaluator.evaluate(
+        hostBrushes.wallBrush,
+        hostBrushes.deckSlab,
+        ADDITION,
+      ) as Brush
+      hostSolid = csgEvaluator.evaluate(wallPlusDeck, hostBrushes.shinSlab, ADDITION) as Brush
+      wallPlusDeck.geometry.dispose()
+      hostBrushes.deckSlab.geometry.dispose()
+      hostBrushes.shinSlab.geometry.dispose()
+      hostBrushes.wallBrush.geometry.dispose()
+      hostBrushes.innerBrush.geometry.dispose()
+
+      // The dormer's wall skirt extends below y=0 (the host wall foot), so
+      // also union in a deep ground box covering the host footprint. Without
+      // this the dormer's skirt below y=0 has nothing to subtract against
+      // and dangles in the air.
+      const groundMargin = Math.max(hostSegment.width, hostSegment.depth) * 2 + 4
+      const groundBoxGeo = new THREE.BoxGeometry(groundMargin, 100, groundMargin)
+      groundBoxGeo.translate(0, -50, 0) // top face at y=0, extends to y=-100
+      const indexCount = groundBoxGeo.getIndex()?.count ?? 0
+      groundBoxGeo.clearGroups()
+      groundBoxGeo.addGroup(0, indexCount, 0)
+      computeGeometryBoundsTree(groundBoxGeo)
+      const groundBrush = new Brush(groundBoxGeo, dummyMats)
+      groundBrush.updateMatrixWorld()
+      const fullTrim = csgEvaluator.evaluate(hostSolid, groundBrush, ADDITION) as Brush
+      hostSolid.geometry.dispose()
+      groundBrush.geometry.dispose()
+      hostSolid = fullTrim
+
+      // Host brushes live in segment-local. Bring them into dormer-mesh-local
+      // by inverting the dormer's T(node.position) · R_y(node.rotation).
+      const segToMesh = new THREE.Matrix4()
+        .compose(
+          new THREE.Vector3(
+            dormer.position[0] ?? 0,
+            dormer.position[1] ?? 0,
+            dormer.position[2] ?? 0,
+          ),
+          new THREE.Quaternion().setFromAxisAngle(_yAxis, dormer.rotation),
+          _scale,
+        )
+        .invert()
+      csgGeometry(hostSolid).applyMatrix4(segToMesh)
+      prepareBrushForCSG(hostSolid)
+
+      const trimmed = csgEvaluator.evaluate(dormerSolid, hostSolid, SUBTRACTION) as Brush
+      dormerSolid.geometry.dispose()
+      hostSolid.geometry.dispose()
+      hostSolid = null
+      dormerSolid = trimmed
+    }
+
+    resultGeo = csgGeometry(dormerSolid)
+    const resultMaterials = csgMaterials(dormerSolid)
+
+    const matToIndex = new Map<THREE.Material, number>([
+      [dummyMats[0], 0],
+      [dummyMats[1], 1],
+      [dummyMats[2], 2],
+      [dummyMats[3], 3],
+    ])
+    for (const group of resultGeo.groups) {
+      group.materialIndex = mapRoofGroupMaterialIndex(
+        group.materialIndex,
+        resultMaterials,
+        matToIndex,
+      )
+    }
+    remapRoofShellFaces(resultGeo, virtualSegment)
+  } catch (e) {
+    console.error('Dormer CSG failed:', e)
+    if (dormerSolid) resultGeo = csgGeometry(dormerSolid).clone()
+    if (hostSolid) hostSolid.geometry.dispose()
+  }
+
+  resultGeo.computeVertexNormals()
+  ensureUv2Attribute(resultGeo)
+  return resultGeo
 }
 
 export function generateRoofSegmentGeometry(node: RoofSegmentNode): THREE.BufferGeometry {

@@ -6,6 +6,7 @@ import {
   type DormerNode,
   type RoofNode,
   type RoofSegmentNode,
+  type RoofType,
   sceneRegistry,
   useLiveNodeOverrides,
   useScene,
@@ -17,8 +18,16 @@ import { Vector3 } from 'three'
 import { sfxEmitter } from '../../../lib/sfx-bus'
 import { ActionButton, ActionGroup } from '../controls/action-button'
 import { PanelSection } from '../controls/panel-section'
+import { SegmentedControl } from '../controls/segmented-control'
 import { SliderControl } from '../controls/slider-control'
 import { PanelWrapper } from './panel-wrapper'
+
+const ROOF_TYPE_OPTIONS: { label: string; value: RoofType }[] = [
+  { label: 'Gable', value: 'gable' },
+  { label: 'Hip', value: 'hip' },
+  { label: 'Shed', value: 'shed' },
+  { label: 'Flat', value: 'flat' },
+]
 
 export function DormerPanel() {
   const selectedId = useViewer((s) => s.selection.selectedIds[0])
@@ -196,6 +205,14 @@ export function DormerPanel() {
       title={node.name || 'Dormer'}
       width={300}
     >
+      <PanelSection title="Roof Type">
+        <SegmentedControl
+          onChange={(v) => commitProp({ roofType: v })}
+          options={ROOF_TYPE_OPTIONS}
+          value={node.roofType}
+        />
+      </PanelSection>
+
       <PanelSection title="Dimensions">
         <SliderControl
           label="Width"
@@ -210,7 +227,19 @@ export function DormerPanel() {
           value={Math.round(node.width * 100) / 100}
         />
         <SliderControl
-          label="Height"
+          label="Depth"
+          max={5}
+          min={0.2}
+          onChange={(v) => previewProp({ depth: v })}
+          onCommit={(v) => commitProp({ depth: v })}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          unit="m"
+          value={Math.round(node.depth * 100) / 100}
+        />
+        <SliderControl
+          label="Wall Height"
           max={5}
           min={0.2}
           onChange={(v) => previewProp({ height: v })}
@@ -222,16 +251,16 @@ export function DormerPanel() {
           value={Math.round(node.height * 100) / 100}
         />
         <SliderControl
-          label="Depth"
-          max={5}
-          min={0.2}
-          onChange={(v) => previewProp({ depth: v })}
-          onCommit={(v) => commitProp({ depth: v })}
+          label="Roof Height"
+          max={3}
+          min={0}
+          onChange={(v) => previewProp({ roofHeight: v })}
+          onCommit={(v) => commitProp({ roofHeight: v })}
           precision={2}
           restoreOnCommit={false}
           step={0.05}
           unit="m"
-          value={Math.round(node.depth * 100) / 100}
+          value={Math.round((node.roofHeight ?? 0.6) * 100) / 100}
         />
       </PanelSection>
 

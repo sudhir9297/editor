@@ -1,22 +1,18 @@
-import { type DormerNode, useLiveNodeOverrides, useRegistry, useScene } from '@pascal-app/core'
+import {
+  type AnyNodeId,
+  type DormerNode,
+  type RoofSegmentNode,
+  useLiveNodeOverrides,
+  useRegistry,
+  useScene,
+} from '@pascal-app/core'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
-
-const defaultMaterial = new MeshStandardNodeMaterial({
-  color: 0xe8_e2_d4,
-  roughness: 0.85,
-  metalness: 0,
-})
-
-const MIN_GEOMETRY_SIZE = 0.01
-
-function positiveSize(value: number) {
-  return Number.isFinite(value) ? Math.max(MIN_GEOMETRY_SIZE, value) : MIN_GEOMETRY_SIZE
-}
+import { generateDormerGeometry } from '../../../systems/roof/roof-system'
+import { roofMaterials } from '../roof/roof-materials'
 
 export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   const ref = useRef<THREE.Group>(null!)
@@ -32,31 +28,35 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   )
 
   const segment = useScene((state) =>
-    node.roofSegmentId ? state.nodes[node.roofSegmentId as never] : undefined,
-  ) as { position: [number, number, number]; rotation: number } | undefined
-
-  const material = useMemo(
-    () =>
-      node.material
-        ? createMaterial(node.material)
-        : (createMaterialFromPresetRef(node.materialPreset) ?? defaultMaterial),
-    [node.material, node.materialPreset],
+    node.roofSegmentId
+      ? (state.nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
+      : undefined,
   )
 
-  const geometry = useMemo(() => {
-    const w = positiveSize(node.width)
-    const h = positiveSize(node.height)
-    const d = positiveSize(node.depth)
-    const geo = new THREE.BoxGeometry(w, h, d)
-    geo.translate(0, h / 2, 0)
-    return geo
-  }, [node.width, node.height, node.depth])
+  const customMaterial = useMemo(() => {
+    if (node.material) {
+      const m = createMaterial(node.material)
+      return [m, m, m, m]
+    }
+    if (node.materialPreset) {
+      const m = createMaterialFromPresetRef(node.materialPreset)
+      if (m) return [m, m, m, m]
+    }
+    return null
+  }, [node.material, node.materialPreset])
+
+  const material = customMaterial ?? roofMaterials
+
+  const geometry = useMemo(
+    () => (segment ? generateDormerGeometry(node, segment) : null),
+    [node, segment],
+  )
 
   useEffect(() => {
-    return () => geometry.dispose()
+    return () => geometry?.dispose()
   }, [geometry])
 
-  if (!segment) return null
+  if (!(segment && geometry)) return null
 
   return (
     <group

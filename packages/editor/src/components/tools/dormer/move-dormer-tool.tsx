@@ -58,12 +58,14 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
 
   const previewGeo = useMemo(() => {
     const w = Math.max(0.01, Number.isFinite(node.width) ? node.width : 2)
-    const h = Math.max(0.01, Number.isFinite(node.height) ? node.height : 1.2)
+    const wallH = Math.max(0.01, Number.isFinite(node.height) ? node.height : 1.2)
+    const roofH = Math.max(0, Number.isFinite(node.roofHeight) ? node.roofHeight : 0.6)
+    const h = wallH + roofH
     const d = Math.max(0.01, Number.isFinite(node.depth) ? node.depth : 1.5)
     const geo = new THREE.BoxGeometry(w, h, d)
     geo.translate(0, h / 2, 0)
     return geo
-  }, [node.width, node.depth, node.height])
+  }, [node.width, node.depth, node.height, node.roofHeight])
 
   useEffect(() => {
     return () => {

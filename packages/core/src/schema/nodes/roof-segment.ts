@@ -4,12 +4,11 @@ import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
 import { ChimneyNode } from './chimney'
 import { DormerNode } from './dormer'
+import { RoofType } from './roof-type'
 import { SkylightNode } from './skylight'
 import { SolarPanelNode } from './solar-panel'
 
-export const RoofType = z.enum(['hip', 'gable', 'shed', 'gambrel', 'dutch', 'mansard', 'flat'])
-
-export type RoofType = z.infer<typeof RoofType>
+export { RoofType }
 
 export const RoofSegmentNode = BaseNode.extend({
   id: objectId('rseg'),
