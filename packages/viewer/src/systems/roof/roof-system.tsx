@@ -229,6 +229,10 @@ function updateMergedRoofGeometry(
     for (const childElemId of child.children ?? []) {
       const childElem = nodes[childElemId as AnyNodeId]
       if (!childElem) continue
+      const elemMeta = typeof childElem.metadata === 'object' && childElem.metadata !== null
+        ? (childElem.metadata as Record<string, unknown>)
+        : undefined
+      if (elemMeta?.isTransient) continue
       let cut: Brush | null = null
       if (childElem.type === 'chimney') {
         cut = buildChimneyCutBrush(childElem as ChimneyNode, child)

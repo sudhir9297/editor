@@ -68,6 +68,12 @@ export {
 } from './material-library'
 export * from './schema'
 export {
+  SOLAR_PANEL_PRESET_LABELS,
+  SOLAR_PANEL_PRESETS,
+  SolarPanelPresetKey,
+  type SolarPanelPresetDims,
+} from './solar-panel-presets'
+export {
   getSceneHistoryPauseDepth,
   pauseSceneHistory,
   resetSceneHistoryPauseDepth,

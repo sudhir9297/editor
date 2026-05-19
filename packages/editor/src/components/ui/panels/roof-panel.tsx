@@ -73,8 +73,6 @@ export function RoofPanel() {
 
   const handleAddChimney = useCallback(() => {
     if (!node) return
-    // Host on the first segment of this roof. The chimney's panel and a
-    // future drag handle let the user reposition it after creation.
     const firstSegment = segments[0]
     if (!firstSegment) {
       console.warn('[roof-panel] Add Chimney: roof has no segments yet.')
@@ -84,14 +82,13 @@ export function RoofPanel() {
       roofSegmentId: firstSegment.id,
       parentId: firstSegment.id,
       position: [0, 0, 0],
+      visible: false,
+      metadata: { isNew: true, isTransient: true },
     })
     createNode(chimney, firstSegment.id as AnyNodeId)
-    updateNode(firstSegment.id as AnyNode['id'], {
-      children: [...(firstSegment.children ?? []), chimney.id],
-    })
     setSelection({ selectedIds: [chimney.id as AnyNode['id']] })
-    sfxEmitter.emit('sfx:structure-build')
-  }, [node, segments, createNode, updateNode, setSelection])
+    setMovingNode(chimney)
+  }, [node, segments, createNode, setSelection, setMovingNode])
 
   const handleAddSkylight = useCallback(() => {
     if (!node) return
@@ -128,6 +125,7 @@ export function RoofPanel() {
       parentId: firstSegment.id,
       position: [0, 0, 0],
       visible: false,
+      panelTypePreset: 'residential',
       metadata: { isNew: true },
     })
     createNode(solarPanel, firstSegment.id as AnyNodeId)

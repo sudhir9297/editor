@@ -1,5 +1,6 @@
 import dedent from 'dedent'
 import { z } from 'zod'
+import { SolarPanelPresetKey } from '../../solar-panel-presets'
 import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
 
@@ -16,6 +17,11 @@ export const SolarPanelNode = BaseNode.extend({
   panelMaterial: MaterialSchema.optional(),
   panelMaterialPreset: z.string().optional(),
 
+  // Visual preset that drove panelWidth/panelHeight/frameThickness/frameDepth.
+  // Cleared to undefined whenever any of those four fields is edited manually,
+  // so its presence always means "values match the preset table exactly".
+  panelTypePreset: SolarPanelPresetKey.optional(),
+
   // Host: the RoofSegmentNode this solar panel array is attached to.
   roofSegmentId: z.string().optional(),
 
@@ -31,9 +37,9 @@ export const SolarPanelNode = BaseNode.extend({
   rows: z.number().int().min(1).max(20).default(4),
   columns: z.number().int().min(1).max(20).default(5),
 
-  // Individual panel dimensions (meters).
-  panelWidth: z.number().default(0.83),
-  panelHeight: z.number().default(0.65),
+  // Individual panel dimensions (meters). Defaults match the 'residential' preset.
+  panelWidth: z.number().default(1.0),
+  panelHeight: z.number().default(1.65),
 
   // Gaps between panels.
   gapX: z.number().default(0.02),
@@ -48,7 +54,7 @@ export const SolarPanelNode = BaseNode.extend({
 
   // Frame.
   frameThickness: z.number().default(0.04),
-  frameDepth: z.number().default(0.035),
+  frameDepth: z.number().default(0.04),
 
   // Surface normal at placement point (segment-local space).
   // Captured from raycast during move/placement; used to orient the panel
@@ -58,8 +64,9 @@ export const SolarPanelNode = BaseNode.extend({
   dedent`
   Solar panel array node - a grid of photovoltaic panels hosted on a roof segment.
   - roofSegmentId: id of the host RoofSegmentNode
-  - position: segment-local coordinates ([u, _, v]); y is ignored,
-    placement is anchored to the segment's pitched surface
+  - panelTypePreset: optional visual preset key; when set, panelWidth/Height/
+    frameThickness/frameDepth equal the preset table values
+  - position: segment-local coordinates ([u, surfaceY, v])
   - rotation: yaw around the vertical axis
   - rows/columns: grid layout of the panel array
   - panelWidth/panelHeight: dimensions of each individual panel

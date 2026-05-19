@@ -77,23 +77,25 @@ export function MoveChimneyTool({ node }: { node: ChimneyNode }) {
   useEffect(() => {
     useScene.temporal.getState().pause()
 
+    const meta =
+      typeof node.metadata === 'object' && node.metadata !== null
+        ? (node.metadata as Record<string, unknown>)
+        : {}
+    const isNew = !!meta.isNew
+
     const original = {
       position: [...node.position] as [number, number, number],
       rotation: node.rotation ?? 0,
       heightAboveRidge: node.heightAboveRidge ?? 1,
       roofSegmentId: node.roofSegmentId,
       parentId: node.parentId,
+      visible: node.visible,
       metadata: node.metadata,
     }
 
     let wasCommitted = false
     let wasCancelled = false
 
-    // Mark transient so the chimney doesn't intercept roof raycasts.
-    const meta =
-      typeof node.metadata === 'object' && node.metadata !== null
-        ? (node.metadata as Record<string, unknown>)
-        : {}
     useScene.getState().updateNode(node.id as AnyNodeId, {
       metadata: { ...meta, isTransient: true },
     })
@@ -206,13 +208,13 @@ export function MoveChimneyTool({ node }: { node: ChimneyNode }) {
       })
       useScene.temporal.getState().resume()
 
-      // Commit: reparent to target segment with segment-local position.
       st.updateNode(node.id as AnyNodeId, {
         roofSegmentId: targetSegmentId,
         parentId: targetSegmentId,
         position: [hit.localX, 0, hit.localZ],
         rotation: finalRotation,
         heightAboveRidge: finalHeightAboveRidge,
+        visible: true,
         metadata: {},
       })
 
@@ -235,6 +237,15 @@ export function MoveChimneyTool({ node }: { node: ChimneyNode }) {
 
     const onCancel = () => {
       wasCancelled = true
+
+      if (isNew) {
+        useScene.temporal.getState().resume()
+        useScene.getState().deleteNode(node.id as AnyNodeId)
+        markToolCancelConsumed()
+        exitMoveMode()
+        return
+      }
+
       useScene.getState().updateNode(node.id as AnyNodeId, {
         position: original.position,
         rotation: original.rotation,
@@ -247,7 +258,6 @@ export function MoveChimneyTool({ node }: { node: ChimneyNode }) {
         useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
       }
 
-      // Show the real chimney again.
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
 
@@ -267,23 +277,6 @@ export function MoveChimneyTool({ node }: { node: ChimneyNode }) {
       emitter.off('roof:click', onRoofClick)
       emitter.off('tool:cancel', onCancel)
 
-      // Safety: restore if neither committed nor cancelled
-      const current = useScene.getState().nodes[node.id as AnyNodeId] as ChimneyNode | undefined
-      const currentMeta = current?.metadata as Record<string, unknown> | undefined
-      if (!(wasCommitted || wasCancelled) && currentMeta?.isTransient) {
-        useScene.getState().updateNode(node.id as AnyNodeId, {
-          position: original.position,
-          rotation: original.rotation,
-          heightAboveRidge: original.heightAboveRidge,
-          roofSegmentId: original.roofSegmentId as AnyNodeId | undefined,
-          parentId: original.parentId as AnyNodeId | undefined,
-          metadata: original.metadata,
-        })
-        if (original.roofSegmentId) {
-          useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
-        }
-      }
-      // Ensure real chimney is visible on cleanup.
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
       useScene.temporal.getState().resume()

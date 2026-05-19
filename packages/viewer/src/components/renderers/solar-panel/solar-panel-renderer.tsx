@@ -20,11 +20,107 @@ const defaultFrameMaterial = new MeshStandardNodeMaterial({
   metalness: 0.8,
 })
 
-const defaultPanelMaterial = new MeshStandardNodeMaterial({
-  color: new THREE.Color(0.05, 0.05, 0.12),
-  roughness: 0.15,
-  metalness: 0.3,
-})
+// Procedurally paints one photovoltaic panel: a square grid of monocrystalline
+// cells with chamfered corners on a light backsheet, so adjacent chamfers form
+// small diamond gaps where four cells meet. Matches the look of a typical
+// residential mono panel. Lives on a CanvasTexture so we ship no extra assets.
+function createSolarPanelTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null
+
+  const size = 1024
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  // Light backsheet that shows through chamfered corners.
+  ctx.fillStyle = '#dde3ec'
+  ctx.fillRect(0, 0, size, size)
+
+  const cells = 7
+  const margin = size * 0.025
+  const gap = size * 0.008
+  const cellSize = (size - margin * 2 - gap * (cells - 1)) / cells
+  const chamfer = cellSize * 0.16
+
+  for (let cy = 0; cy < cells; cy++) {
+    for (let cx = 0; cx < cells; cx++) {
+      const x = margin + cx * (cellSize + gap)
+      const y = margin + cy * (cellSize + gap)
+
+      ctx.beginPath()
+      ctx.moveTo(x + chamfer, y)
+      ctx.lineTo(x + cellSize - chamfer, y)
+      ctx.lineTo(x + cellSize, y + chamfer)
+      ctx.lineTo(x + cellSize, y + cellSize - chamfer)
+      ctx.lineTo(x + cellSize - chamfer, y + cellSize)
+      ctx.lineTo(x + chamfer, y + cellSize)
+      ctx.lineTo(x, y + cellSize - chamfer)
+      ctx.lineTo(x, y + chamfer)
+      ctx.closePath()
+
+      const grad = ctx.createLinearGradient(x, y, x + cellSize, y + cellSize)
+      grad.addColorStop(0, '#0f1b3a')
+      grad.addColorStop(1, '#162546')
+      ctx.fillStyle = grad
+      ctx.fill()
+
+      ctx.save()
+      ctx.clip()
+      ctx.strokeStyle = 'rgba(120, 150, 200, 0.10)'
+      ctx.lineWidth = 0.5
+      const fingers = 16
+      for (let f = 1; f < fingers; f++) {
+        const fx = x + (cellSize * f) / fingers
+        ctx.beginPath()
+        ctx.moveTo(fx, y)
+        ctx.lineTo(fx, y + cellSize)
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = 'rgba(200, 210, 225, 0.35)'
+      ctx.lineWidth = Math.max(1, cellSize * 0.008)
+      for (let b = 1; b <= 2; b++) {
+        const by = y + (cellSize * b) / 3
+        ctx.beginPath()
+        ctx.moveTo(x, by)
+        ctx.lineTo(x + cellSize, by)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  tex.needsUpdate = true
+  return tex
+}
+
+let _defaultPanelMaterial: THREE.Material | null = null
+function getDefaultPanelMaterial(): THREE.Material {
+  if (_defaultPanelMaterial) return _defaultPanelMaterial
+  const map = createSolarPanelTexture()
+  if (map) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0xffffff),
+      roughness: 0.22,
+      metalness: 0.35,
+      map,
+    })
+    mat.needsUpdate = true
+    _defaultPanelMaterial = mat
+  } else {
+    _defaultPanelMaterial = new MeshStandardNodeMaterial({
+      color: new THREE.Color(0.05, 0.05, 0.12),
+      roughness: 0.15,
+      metalness: 0.3,
+    })
+  }
+  return _defaultPanelMaterial
+}
 
 const _up = new THREE.Vector3(0, 1, 0)
 const _normal = new THREE.Vector3()
@@ -215,8 +311,8 @@ export function SolarPanelRenderer({ node }: { node: SolarPanelNode }) {
       ? (createMaterialFromPresetRef(effective.materialPreset) ?? defaultFrameMaterial)
       : defaultFrameMaterial
     const panel = effective.panelMaterialPreset
-      ? (createMaterialFromPresetRef(effective.panelMaterialPreset) ?? defaultPanelMaterial)
-      : defaultPanelMaterial
+      ? (createMaterialFromPresetRef(effective.panelMaterialPreset) ?? getDefaultPanelMaterial())
+      : getDefaultPanelMaterial()
     return [frame, panel] as THREE.Material[]
   }, [effective.materialPreset, effective.panelMaterialPreset])
 
