@@ -266,8 +266,99 @@ export function DormerPanel() {
       </PanelSection>
 
       <PanelSection title="Window">
-        {/* Dimensions */}
+        {/* Shape */}
         <div className="mb-1 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Shape
+        </div>
+        <SegmentedControl
+          onChange={(v) => commitProp({ windowShape: v as 'rectangle' | 'rounded' | 'arch' })}
+          options={[
+            { label: 'Rect', value: 'rectangle' },
+            { label: 'Rounded', value: 'rounded' },
+            { label: 'Arch', value: 'arch' },
+          ]}
+          value={node.windowShape ?? 'rectangle'}
+        />
+        {(node.windowShape ?? 'rectangle') === 'arch' && (
+          <SliderControl
+            label="Arch Height"
+            max={Math.max(node.windowHeight ?? 1.2, 0.05)}
+            min={0.05}
+            onChange={(v) => previewProp({ windowArchHeight: v })}
+            onCommit={(v) => commitProp({ windowArchHeight: v })}
+            precision={2}
+            restoreOnCommit={false}
+            step={0.05}
+            unit="m"
+            value={Math.round((node.windowArchHeight ?? 0.35) * 100) / 100}
+          />
+        )}
+        {(node.windowShape ?? 'rectangle') === 'rounded' && (() => {
+          const radiusMode = node.windowRadiusMode ?? 'all'
+          const maxR = Math.min((node.windowWidth ?? 1.2) / 2, (node.windowHeight ?? 1.2) / 2)
+          const radii = node.windowCornerRadii ?? [0.15, 0.15, 0.15, 0.15]
+          const cornerLabels = [
+            ['Top Left', 0],
+            ['Top Right', 1],
+            ['Bottom Right', 2],
+            ['Bottom Left', 3],
+          ] as const
+          return (
+            <div className="mt-1 flex flex-col gap-1">
+              <SegmentedControl
+                onChange={(v) => commitProp({ windowRadiusMode: v as 'all' | 'individual' })}
+                options={[
+                  { label: 'All', value: 'all' },
+                  { label: 'Individual', value: 'individual' },
+                ]}
+                value={radiusMode}
+              />
+              {radiusMode === 'all' ? (
+                <SliderControl
+                  label="Radius"
+                  max={maxR}
+                  min={0}
+                  onChange={(v) => previewProp({ windowCornerRadius: v })}
+                  onCommit={(v) => commitProp({ windowCornerRadius: v })}
+                  precision={2}
+                  restoreOnCommit={false}
+                  step={0.01}
+                  unit="m"
+                  value={Math.round((node.windowCornerRadius ?? 0.15) * 100) / 100}
+                />
+              ) : (
+                <>
+                  {cornerLabels.map(([label, idx]) => (
+                    <SliderControl
+                      key={label}
+                      label={label}
+                      max={maxR}
+                      min={0}
+                      onChange={(v) => {
+                        const next = [...radii] as [number, number, number, number]
+                        next[idx] = v
+                        previewProp({ windowCornerRadii: next })
+                      }}
+                      onCommit={(v) => {
+                        const next = [...radii] as [number, number, number, number]
+                        next[idx] = v
+                        commitProp({ windowCornerRadii: next })
+                      }}
+                      precision={2}
+                      restoreOnCommit={false}
+                      step={0.01}
+                      unit="m"
+                      value={Math.round((radii[idx] ?? 0.15) * 100) / 100}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* Dimensions */}
+        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
           Dimensions
         </div>
         <SliderControl

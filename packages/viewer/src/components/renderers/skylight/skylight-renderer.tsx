@@ -24,7 +24,7 @@ import {
 } from '../../../systems/roof/roof-system'
 
 const defaultFrameMaterial = new MeshStandardNodeMaterial({
-  color: 0x555555,
+  color: 0xffffff,
   roughness: 0.3,
   metalness: 0.5,
 })

@@ -44,15 +44,70 @@ const dormerMaterials: THREE.Material[] = [
 export const DORMER_GABLE_MATERIAL_INDEX = 4
 
 type WindowGeometries = {
-  frameBars: { geo: THREE.BoxGeometry; pos: [number, number, number] }[]
-  glassPanes: { geo: THREE.BoxGeometry; pos: [number, number, number] }[]
+  frameBars: { geo: THREE.BufferGeometry; pos: [number, number, number] }[]
+  glassPanes: { geo: THREE.BufferGeometry; pos: [number, number, number] }[]
   sill: THREE.BoxGeometry | null
   sillPos: [number, number, number]
 }
 
-// Frame grows INWARD from the CSG cut edge. The cut opening is winW×winH.
-// Frame bars sit inside that opening. Dividers subdivide the inner area into
-// a cols×rows grid; individual glass panes fill each cell.
+type DormerWindowShape = 'rectangle' | 'rounded' | 'arch'
+
+function makeArchShape(hw: number, hh: number, archHeight: number): THREE.Shape {
+  const clampedArch = Math.min(Math.max(archHeight, 0.01), Math.max(hh * 2, 0.01))
+  const springY = hh - clampedArch
+  const segments = 32
+  const shape = new THREE.Shape()
+  shape.moveTo(-hw, -hh)
+  shape.lineTo(hw, -hh)
+  shape.lineTo(hw, springY)
+  for (let i = 1; i <= segments; i++) {
+    const x = hw + (-hw - hw) * (i / segments)
+    const t = Math.min(Math.abs(x) / Math.max(hw, 1e-6), 1)
+    const y = springY + clampedArch * Math.sqrt(Math.max(1 - t * t, 0))
+    shape.lineTo(x, y)
+  }
+  shape.lineTo(-hw, -hh)
+  shape.closePath()
+  return shape
+}
+
+function normalizeRadii(
+  radii: [number, number, number, number],
+  w: number,
+  h: number,
+): [number, number, number, number] {
+  const r = radii.map((v) => Math.max(v, 0)) as [number, number, number, number]
+  const scale = Math.min(
+    1,
+    Math.max(w, 0) / Math.max(r[0] + r[1], 1e-6),
+    Math.max(w, 0) / Math.max(r[3] + r[2], 1e-6),
+    Math.max(h, 0) / Math.max(r[0] + r[3], 1e-6),
+    Math.max(h, 0) / Math.max(r[1] + r[2], 1e-6),
+  )
+  if (scale >= 1) return r
+  return r.map((v) => v * scale) as [number, number, number, number]
+}
+
+function makeRoundedShape(hw: number, hh: number, radii: [number, number, number, number]): THREE.Shape {
+  const [tl, tr, br, bl] = normalizeRadii(radii, hw * 2, hh * 2)
+  const shape = new THREE.Shape()
+  shape.moveTo(-hw + bl, -hh)
+  shape.lineTo(hw - br, -hh)
+  if (br > 0) shape.absarc(hw - br, -hh + br, br, -Math.PI / 2, 0, false)
+  else shape.lineTo(hw, -hh)
+  shape.lineTo(hw, hh - tr)
+  if (tr > 0) shape.absarc(hw - tr, hh - tr, tr, 0, Math.PI / 2, false)
+  else shape.lineTo(hw, hh)
+  shape.lineTo(-hw + tl, hh)
+  if (tl > 0) shape.absarc(-hw + tl, hh - tl, tl, Math.PI / 2, Math.PI, false)
+  else shape.lineTo(-hw, hh)
+  shape.lineTo(-hw, -hh + bl)
+  if (bl > 0) shape.absarc(-hw + bl, -hh + bl, bl, Math.PI, (3 * Math.PI) / 2, false)
+  else shape.lineTo(-hw, -hh)
+  shape.closePath()
+  return shape
+}
+
 function buildWindowGeometries(
   winW: number,
   winH: number,
@@ -64,6 +119,9 @@ function buildWindowGeometries(
   showSill: boolean,
   sillDepth: number,
   sillThickness: number,
+  shape: DormerWindowShape = 'rectangle',
+  archHeight = 0.35,
+  cornerRadii: [number, number, number, number] = [0.15, 0.15, 0.15, 0.15],
 ): WindowGeometries {
   const safeFt = Math.max(0.001, ft)
   const safeDt = Math.max(0.001, dt)
@@ -74,46 +132,101 @@ function buildWindowGeometries(
   const ht = safeFt / 2
 
   const frameBars: WindowGeometries['frameBars'] = []
-
-  // Outer frame: top, bottom, left, right
-  frameBars.push({ geo: new THREE.BoxGeometry(winW, safeFt, fd), pos: [0, hh - ht, 0] })
-  frameBars.push({ geo: new THREE.BoxGeometry(winW, safeFt, fd), pos: [0, -hh + ht, 0] })
-  frameBars.push({ geo: new THREE.BoxGeometry(safeFt, innerH, fd), pos: [-hw + ht, 0, 0] })
-  frameBars.push({ geo: new THREE.BoxGeometry(safeFt, innerH, fd), pos: [hw - ht, 0, 0] })
-
-  // Column dividers (vertical bars inside the inner area)
-  const colDividerCount = cols - 1
-  const totalColDividerW = colDividerCount * safeDt
-  const paneAreaW = Math.max(0.01, innerW - totalColDividerW)
-  const paneW = paneAreaW / cols
-
-  for (let c = 1; c < cols; c++) {
-    const x = -innerW / 2 + c * paneW + (c - 0.5) * safeDt
-    frameBars.push({ geo: new THREE.BoxGeometry(safeDt, innerH, fd), pos: [x, 0, 0] })
-  }
-
-  // Row dividers (horizontal bars inside the inner area)
-  const rowDividerCount = rows - 1
-  const totalRowDividerH = rowDividerCount * safeDt
-  const paneAreaH = Math.max(0.01, innerH - totalRowDividerH)
-  const paneH = paneAreaH / rows
-
-  for (let r = 1; r < rows; r++) {
-    const y = -innerH / 2 + r * paneH + (r - 0.5) * safeDt
-    frameBars.push({ geo: new THREE.BoxGeometry(innerW, safeDt, fd), pos: [0, y, 0] })
-  }
-
-  // Glass panes — one per grid cell
   const glassPanes: WindowGeometries['glassPanes'] = []
-  const glassW = Math.max(0.01, paneW)
-  const glassH = Math.max(0.01, paneH)
-  const glassGeo = new THREE.BoxGeometry(glassW, glassH, 0.008)
 
-  for (let c = 0; c < cols; c++) {
-    const cx = -innerW / 2 + paneW / 2 + c * (paneW + safeDt)
-    for (let r = 0; r < rows; r++) {
-      const cy = -innerH / 2 + paneH / 2 + r * (paneH + safeDt)
-      glassPanes.push({ geo: glassGeo, pos: [cx, cy, 0] })
+  if (shape === 'arch' || shape === 'rounded') {
+    // Shaped frame: extrude outer minus inner hole
+    const insetRadii = cornerRadii.map((r) => Math.max(r - safeFt, 0)) as [number, number, number, number]
+    const outerShape =
+      shape === 'arch'
+        ? makeArchShape(hw, hh, archHeight)
+        : makeRoundedShape(hw, hh, cornerRadii)
+
+    const innerHole =
+      shape === 'arch'
+        ? makeArchShape(hw - safeFt, hh - safeFt, Math.max(archHeight - safeFt, 0.01))
+        : makeRoundedShape(hw - safeFt, hh - safeFt, insetRadii)
+
+    outerShape.holes.push(innerHole)
+    const frameGeo = new THREE.ExtrudeGeometry(outerShape, {
+      depth: fd,
+      bevelEnabled: false,
+      curveSegments: 24,
+    })
+    frameGeo.translate(0, 0, -fd / 2)
+    frameBars.push({ geo: frameGeo, pos: [0, 0, 0] })
+
+    // Divider bars (still boxes — they sit inside the inner area)
+    const colDividerCount = cols - 1
+    const totalColDividerW = colDividerCount * safeDt
+    const paneAreaW = Math.max(0.01, innerW - totalColDividerW)
+    const paneW = paneAreaW / cols
+
+    for (let c = 1; c < cols; c++) {
+      const x = -innerW / 2 + c * paneW + (c - 0.5) * safeDt
+      frameBars.push({ geo: new THREE.BoxGeometry(safeDt, innerH, fd), pos: [x, 0, 0] })
+    }
+
+    const rowDividerCount = rows - 1
+    const totalRowDividerH = rowDividerCount * safeDt
+    const paneAreaH = Math.max(0.01, innerH - totalRowDividerH)
+    const paneH = paneAreaH / rows
+
+    for (let r = 1; r < rows; r++) {
+      const y = -innerH / 2 + r * paneH + (r - 0.5) * safeDt
+      frameBars.push({ geo: new THREE.BoxGeometry(innerW, safeDt, fd), pos: [0, y, 0] })
+    }
+
+    // Glass: single shaped pane filling the inner area
+    const glassShape =
+      shape === 'arch'
+        ? makeArchShape(hw - safeFt, hh - safeFt, Math.max(archHeight - safeFt, 0.01))
+        : makeRoundedShape(hw - safeFt, hh - safeFt, insetRadii)
+
+    const glassGeo = new THREE.ExtrudeGeometry(glassShape, {
+      depth: 0.008,
+      bevelEnabled: false,
+      curveSegments: 24,
+    })
+    glassGeo.translate(0, 0, -0.004)
+    glassPanes.push({ geo: glassGeo, pos: [0, 0, 0] })
+  } else {
+    // Rectangle: box-based frame bars
+    frameBars.push({ geo: new THREE.BoxGeometry(winW, safeFt, fd), pos: [0, hh - ht, 0] })
+    frameBars.push({ geo: new THREE.BoxGeometry(winW, safeFt, fd), pos: [0, -hh + ht, 0] })
+    frameBars.push({ geo: new THREE.BoxGeometry(safeFt, innerH, fd), pos: [-hw + ht, 0, 0] })
+    frameBars.push({ geo: new THREE.BoxGeometry(safeFt, innerH, fd), pos: [hw - ht, 0, 0] })
+
+    const colDividerCount = cols - 1
+    const totalColDividerW = colDividerCount * safeDt
+    const paneAreaW = Math.max(0.01, innerW - totalColDividerW)
+    const paneW = paneAreaW / cols
+
+    for (let c = 1; c < cols; c++) {
+      const x = -innerW / 2 + c * paneW + (c - 0.5) * safeDt
+      frameBars.push({ geo: new THREE.BoxGeometry(safeDt, innerH, fd), pos: [x, 0, 0] })
+    }
+
+    const rowDividerCount = rows - 1
+    const totalRowDividerH = rowDividerCount * safeDt
+    const paneAreaH = Math.max(0.01, innerH - totalRowDividerH)
+    const paneH = paneAreaH / rows
+
+    for (let r = 1; r < rows; r++) {
+      const y = -innerH / 2 + r * paneH + (r - 0.5) * safeDt
+      frameBars.push({ geo: new THREE.BoxGeometry(innerW, safeDt, fd), pos: [0, y, 0] })
+    }
+
+    const glassW = Math.max(0.01, paneAreaW / cols)
+    const glassH = Math.max(0.01, paneAreaH / rows)
+    const glassGeo = new THREE.BoxGeometry(glassW, glassH, 0.008)
+
+    for (let c = 0; c < cols; c++) {
+      const cx = -innerW / 2 + (paneAreaW / cols) / 2 + c * ((paneAreaW / cols) + safeDt)
+      for (let r = 0; r < rows; r++) {
+        const cy = -innerH / 2 + (paneAreaH / rows) / 2 + r * ((paneAreaH / rows) + safeDt)
+        glassPanes.push({ geo: glassGeo, pos: [cx, cy, 0] })
+      }
     }
   }
 
@@ -204,6 +317,14 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
       node.windowHeight,
       node.windowOffsetX,
       node.windowOffsetY,
+      node.windowShape,
+      node.windowArchHeight,
+      node.windowCornerRadius,
+      node.windowRadiusMode,
+      node.windowCornerRadii?.[0],
+      node.windowCornerRadii?.[1],
+      node.windowCornerRadii?.[2],
+      node.windowCornerRadii?.[3],
     ],
   )
 
@@ -224,13 +345,20 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   const showSill = node.windowSill ?? true
   const sillDepth = node.windowSillDepth ?? 0.08
   const sillThickness = node.windowSillThickness ?? 0.03
+  const winShape = (node.windowShape ?? 'rectangle') as DormerWindowShape
+  const archH = node.windowArchHeight ?? 0.35
+  const cornerR = node.windowCornerRadius ?? 0.15
+  const radiusMode = node.windowRadiusMode ?? 'all'
+  const individualRadii = node.windowCornerRadii ?? [0.15, 0.15, 0.15, 0.15]
+  const resolvedRadii: [number, number, number, number] =
+    radiusMode === 'individual' ? individualRadii as [number, number, number, number] : [cornerR, cornerR, cornerR, cornerR]
 
   const winGeo = useMemo(() => {
     return buildWindowGeometries(
       skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt,
-      showSill, sillDepth, sillThickness,
+      showSill, sillDepth, sillThickness, winShape, archH, resolvedRadii,
     )
-  }, [skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt, showSill, sillDepth, sillThickness])
+  }, [skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt, showSill, sillDepth, sillThickness, winShape, archH, ...resolvedRadii])
 
   useEffect(() => {
     return () => {

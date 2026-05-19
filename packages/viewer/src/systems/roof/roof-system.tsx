@@ -722,6 +722,115 @@ const DORMER_DROP_BELOW = 2
 // is along mesh-X (= dormer.width), so the window's `width` here is in X.
 // The wall's vertical rectangular portion runs from y=0 (foot) to y=dormer.height
 // (eave), so `height` stays within that range.
+function createDormerArchShape(
+  w: number,
+  h: number,
+  archHeight: number,
+): THREE.Shape {
+  const hw = w / 2
+  const hh = h / 2
+  const clampedArch = Math.min(Math.max(archHeight, 0.01), Math.max(h, 0.01))
+  const springY = hh - clampedArch
+  const segments = 32
+
+  const shape = new THREE.Shape()
+  shape.moveTo(-hw, -hh)
+  shape.lineTo(hw, -hh)
+  shape.lineTo(hw, springY)
+  for (let i = 1; i <= segments; i++) {
+    const x = hw + (-hw - hw) * (i / segments)
+    const t = Math.min(Math.abs(x) / hw, 1)
+    const y = springY + clampedArch * Math.sqrt(Math.max(1 - t * t, 0))
+    shape.lineTo(x, y)
+  }
+  shape.lineTo(-hw, -hh)
+  shape.closePath()
+  return shape
+}
+
+function normalizeDormerCornerRadii(
+  radii: [number, number, number, number],
+  w: number,
+  h: number,
+): [number, number, number, number] {
+  const r = radii.map((v) => Math.max(v, 0)) as [number, number, number, number]
+  const scale = Math.min(
+    1,
+    Math.max(w, 0) / Math.max(r[0] + r[1], 1e-6),
+    Math.max(w, 0) / Math.max(r[3] + r[2], 1e-6),
+    Math.max(h, 0) / Math.max(r[0] + r[3], 1e-6),
+    Math.max(h, 0) / Math.max(r[1] + r[2], 1e-6),
+  )
+  if (scale >= 1) return r
+  return r.map((v) => v * scale) as [number, number, number, number]
+}
+
+function createDormerRoundedShape(
+  w: number,
+  h: number,
+  radii: [number, number, number, number],
+): THREE.Shape {
+  const hw = w / 2
+  const hh = h / 2
+  const [tl, tr, br, bl] = normalizeDormerCornerRadii(radii, w, h)
+
+  const shape = new THREE.Shape()
+  shape.moveTo(-hw + bl, -hh)
+  shape.lineTo(hw - br, -hh)
+  if (br > 0) shape.absarc(hw - br, -hh + br, br, -Math.PI / 2, 0, false)
+  else shape.lineTo(hw, -hh)
+  shape.lineTo(hw, hh - tr)
+  if (tr > 0) shape.absarc(hw - tr, hh - tr, tr, 0, Math.PI / 2, false)
+  else shape.lineTo(hw, hh)
+  shape.lineTo(-hw + tl, hh)
+  if (tl > 0) shape.absarc(-hw + tl, hh - tl, tl, Math.PI / 2, Math.PI, false)
+  else shape.lineTo(-hw, hh)
+  shape.lineTo(-hw, -hh + bl)
+  if (bl > 0) shape.absarc(-hw + bl, -hh + bl, bl, Math.PI, (3 * Math.PI) / 2, false)
+  else shape.lineTo(-hw, -hh)
+  shape.closePath()
+  return shape
+}
+
+function resolveDormerRadii(
+  dormer: DormerNode,
+  w: number,
+  h: number,
+): [number, number, number, number] {
+  if ((dormer.windowRadiusMode ?? 'all') === 'individual') {
+    return normalizeDormerCornerRadii(
+      dormer.windowCornerRadii ?? [0.15, 0.15, 0.15, 0.15],
+      w,
+      h,
+    )
+  }
+  const r = dormer.windowCornerRadius ?? 0.15
+  return normalizeDormerCornerRadii([r, r, r, r], w, h)
+}
+
+function createDormerWindowCutGeometry(
+  dormer: DormerNode,
+  w: number,
+  h: number,
+  depth: number,
+): THREE.BufferGeometry {
+  const shape = dormer.windowShape ?? 'rectangle'
+  if (shape === 'arch') {
+    const s = createDormerArchShape(w, h, dormer.windowArchHeight ?? 0.35)
+    const geo = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 24 })
+    geo.translate(0, 0, -depth / 2)
+    return geo
+  }
+  if (shape === 'rounded') {
+    const radii = resolveDormerRadii(dormer, w, h)
+    const s = createDormerRoundedShape(w, h, radii)
+    const geo = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 24 })
+    geo.translate(0, 0, -depth / 2)
+    return geo
+  }
+  return new THREE.BoxGeometry(w, h, depth)
+}
+
 export function getDormerSkirtWindowDims(dormer: DormerNode): {
   width: number
   height: number
@@ -901,9 +1010,20 @@ export function generateDormerGeometry(
 
     // Cut a window in the skirt wall (the hung portion below the anchor, y < 0)
     const skirtWin = getDormerSkirtWindowDims(dormer)
-    const skirtCutGeo = new THREE.BoxGeometry(skirtWin.width, skirtWin.height, dormer.depth + 0.4)
+    const skirtCutGeo = createDormerWindowCutGeometry(
+      dormer,
+      skirtWin.width,
+      skirtWin.height,
+      dormer.depth + 0.4,
+    )
     skirtCutGeo.translate(skirtWin.offsetX, skirtWin.centerY, 0)
-    const skirtCutIndexCount = skirtCutGeo.getIndex()?.count ?? 0
+    if (!skirtCutGeo.getIndex()) {
+      const posCount = skirtCutGeo.getAttribute('position').count
+      const indices = new Uint32Array(posCount)
+      for (let i = 0; i < posCount; i++) indices[i] = i
+      skirtCutGeo.setIndex(new THREE.BufferAttribute(indices, 1))
+    }
+    const skirtCutIndexCount = skirtCutGeo.getIndex()!.count
     skirtCutGeo.clearGroups()
     skirtCutGeo.addGroup(0, skirtCutIndexCount, 0)
     computeGeometryBoundsTree(skirtCutGeo)
