@@ -180,7 +180,6 @@ export function SolarPanelPanel() {
           options={[
             { label: 'Flush', value: 'flush' },
             { label: 'Tilted', value: 'tilted' },
-            { label: 'Ballasted', value: 'ballasted' },
           ]}
           value={node.mountingType ?? 'flush'}
         />

@@ -19,18 +19,20 @@ export const SolarPanelNode = BaseNode.extend({
   // Host: the RoofSegmentNode this solar panel array is attached to.
   roofSegmentId: z.string().optional(),
 
-  // Segment-local 2D position: x along segment width (u), z along segment depth (v).
-  // y is computed at render time from the segment's pitched surface.
+  // Segment-local position. x along segment width (u), z along segment depth (v),
+  // y is the segment-local height captured from the raycast hit on the shingle
+  // surface. If y is 0 (legacy panels), the renderer falls back to an analytical
+  // bare-rafter height (which sinks the panel into the deck+shingles).
   position: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
   // Yaw around the vertical axis.
   rotation: z.number().default(0),
 
   // Grid layout.
   rows: z.number().int().min(1).max(20).default(4),
-  columns: z.number().int().min(1).max(20).default(6),
+  columns: z.number().int().min(1).max(20).default(5),
 
   // Individual panel dimensions (meters).
-  panelWidth: z.number().default(0.5),
+  panelWidth: z.number().default(0.83),
   panelHeight: z.number().default(0.65),
 
   // Gaps between panels.
@@ -38,7 +40,7 @@ export const SolarPanelNode = BaseNode.extend({
   gapY: z.number().default(0.02),
 
   // Mounting type.
-  mountingType: z.enum(['flush', 'tilted', 'ballasted']).default('flush'),
+  mountingType: z.enum(['flush', 'tilted']).default('flush'),
   // Tilt angle in degrees relative to the roof surface (only used when tilted).
   tiltAngle: z.number().default(15),
   // Clearance between roof surface and panel bottom.
@@ -62,7 +64,7 @@ export const SolarPanelNode = BaseNode.extend({
   - rows/columns: grid layout of the panel array
   - panelWidth/panelHeight: dimensions of each individual panel
   - gapX/gapY: spacing between panels horizontally and vertically
-  - mountingType: flush (flat on roof), tilted (angled), or ballasted (weighted)
+  - mountingType: flush (flat on roof) or tilted (angled)
   - tiltAngle: degrees relative to roof surface (tilted mode only)
   - standoffHeight: clearance above roof surface
   - frameThickness: width of the aluminum frame border

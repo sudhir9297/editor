@@ -44,7 +44,12 @@ export function surfaceQuatFromWorldNormal(worldNormal: THREE.Vector3, out: THRE
   } else {
     right.normalize()
   }
-  const forward = new THREE.Vector3().crossVectors(worldNormal, right).normalize()
+  // Right-handed basis: forward = right × up so that (right, up, forward)
+  // has determinant +1. Using `up × right` would build a reflection matrix
+  // (det = -1), and `setFromRotationMatrix` on a reflection produces a
+  // quaternion that doesn't represent a pure rotation — visible as a wrong
+  // panel orientation on every non-flat slope.
+  const forward = new THREE.Vector3().crossVectors(right, worldNormal).normalize()
   const m = new THREE.Matrix4().makeBasis(right, worldNormal, forward)
   return out.setFromRotationMatrix(m)
 }
@@ -273,23 +278,18 @@ export function SolarPanelRenderer({ node }: { node: SolarPanelNode }) {
     if (!lastAppliedQuat.current.equals(target)) {
       surfaceGroup.quaternion.copy(target)
       lastAppliedQuat.current.copy(target)
-      console.log(
-        '[panel renderer] worldNormal:',
-        worldNormal.x.toFixed(3),
-        worldNormal.y.toFixed(3),
-        worldNormal.z.toFixed(3),
-        'localQuat:',
-        target.x.toFixed(3),
-        target.y.toFixed(3),
-        target.z.toFixed(3),
-        target.w.toFixed(3),
-      )
     }
   })
 
   if (!geometry || !segment) return null
 
-  const surfaceY = getSurfaceY(effective.position[0], effective.position[2], segment)
+  // Prefer the captured hit Y (segment-local) — it lands on the actual
+  // shingle surface. Fall back to the analytical bare-rafter height for
+  // legacy panels created before we stored y.
+  const surfaceY =
+    effective.position[1] !== 0
+      ? effective.position[1]
+      : getSurfaceY(effective.position[0], effective.position[2], segment)
 
   const tiltRad =
     effective.mountingType === 'tilted' ? (effective.tiltAngle * Math.PI) / 180 : 0

@@ -117,18 +117,23 @@ export function RoofPanel() {
       console.warn('[roof-panel] Add Solar Panel: roof has no segments yet.')
       return
     }
+    // Drop straight into placement mode. The panel is created hidden and
+    // host-less-ish (attached to segments[0] as a placeholder so the schema
+    // is valid); MoveSolarPanelTool will re-parent it to whichever segment
+    // the user actually clicks and orient it from the raycast surface normal.
+    // If the user cancels before clicking, the move tool deletes the node
+    // (it reads metadata.isNew to know this was a fresh placement).
     const solarPanel = SolarPanelNodeSchema.parse({
       roofSegmentId: firstSegment.id,
       parentId: firstSegment.id,
       position: [0, 0, 0],
+      visible: false,
+      metadata: { isNew: true },
     })
     createNode(solarPanel, firstSegment.id as AnyNodeId)
-    updateNode(firstSegment.id as AnyNode['id'], {
-      children: [...(firstSegment.children ?? []), solarPanel.id],
-    })
     setSelection({ selectedIds: [solarPanel.id as AnyNode['id']] })
-    sfxEmitter.emit('sfx:structure-build')
-  }, [node, segments, createNode, updateNode, setSelection])
+    setMovingNode(solarPanel)
+  }, [node, segments, createNode, setSelection, setMovingNode])
 
   // Flatten chimneys, skylights, and solar panels hosted by any segment of this roof.
   const chimneys = useScene(

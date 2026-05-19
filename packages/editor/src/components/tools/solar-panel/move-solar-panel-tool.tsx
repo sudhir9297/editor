@@ -24,7 +24,7 @@ function resolveSegmentFromWorldPoint(
   worldY: number,
   worldZ: number,
   state: ReturnType<typeof useScene.getState>,
-): { segment: RoofSegmentNode; localX: number; localZ: number } | null {
+): { segment: RoofSegmentNode; localX: number; localY: number; localZ: number } | null {
   const worldPt = new THREE.Vector3(worldX, worldY, worldZ)
   for (const childId of roof.children ?? []) {
     const seg = state.nodes[childId as AnyNodeId] as RoofSegmentNode | undefined
@@ -34,7 +34,11 @@ function resolveSegmentFromWorldPoint(
     segObj.updateWorldMatrix(true, false)
     const local = segObj.worldToLocal(worldPt.clone())
     if (Math.abs(local.x) <= seg.width / 2 && Math.abs(local.z) <= seg.depth / 2) {
-      return { segment: seg, localX: local.x, localZ: local.z }
+      // Capture local Y from the raycast hit so the renderer places the panel
+      // on the actual shingle surface (deck + shingle thickness on top of the
+      // bare rafter). The analytical getSurfaceY ignores those layers and
+      // would sink the panel into the roof.
+      return { segment: seg, localX: local.x, localY: local.y, localZ: local.z }
     }
   }
   return null
@@ -55,6 +59,9 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
   const previewRef = useRef<THREE.Group>(null!)
   const [previewPos, setPreviewPos] = useState<[number, number, number]>([0, 0, 0])
   const [previewQuat, setPreviewQuat] = useState<[number, number, number, number]>([0, 0, 0, 1])
+  // Hide ghost until the cursor lands on a roof; otherwise it flashes at the
+  // world origin when the tool first mounts (notably for fresh "Add" panels).
+  const [hasHit, setHasHit] = useState(false)
 
   const previewGeo = useMemo(() => {
     const totalW = node.columns * node.panelWidth + (node.columns - 1) * node.gapX
@@ -82,6 +89,7 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
       typeof node.metadata === 'object' && node.metadata !== null
         ? (node.metadata as Record<string, unknown>)
         : {}
+    const isNew = !!meta.isNew
     useScene.getState().updateNode(node.id as AnyNodeId, {
       metadata: { ...meta, isTransient: true },
     })
@@ -110,16 +118,18 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
       const nm = new THREE.Matrix3().getNormalMatrix(event.object.matrixWorld)
       n.applyMatrix3(nm).normalize()
       lastWorldNormal = n
-      console.log('[panel] captured world normal:', n.x.toFixed(3), n.y.toFixed(3), n.z.toFixed(3))
 
       // Ghost is mounted in world space (ToolManager sits outside any group).
       // Build a "natural" orientation: +Y to normal, +X to horizontal-perp-to-slope.
       // Matches the renderer's surfaceQuatFromWorldNormal so commit == ghost.
+      // Forward = right × n (not n × right) so the basis is right-handed —
+      // a reflection would feed setFromRotationMatrix garbage and the panel
+      // would visibly mis-rotate on every sloped face.
       const up = new THREE.Vector3(0, 1, 0)
       const right = new THREE.Vector3().crossVectors(up, n)
       if (right.lengthSq() < 1e-6) right.set(1, 0, 0)
       else right.normalize()
-      const forward = new THREE.Vector3().crossVectors(n, right).normalize()
+      const forward = new THREE.Vector3().crossVectors(right, n).normalize()
       const m = new THREE.Matrix4().makeBasis(right, n, forward)
       const q = new THREE.Quaternion().setFromRotationMatrix(m)
       setPreviewQuat([q.x, q.y, q.z, q.w])
@@ -135,12 +145,14 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
       }
       captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setHasHit(true)
       event.stopPropagation()
     }
 
     const onRoofEnter = (event: RoofEvent) => {
       captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setHasHit(true)
       event.stopPropagation()
     }
 
@@ -190,14 +202,13 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
         const current = st.nodes[node.id as AnyNodeId] as SolarPanelNode | undefined
         worldNormalArr = current?.surfaceNormal as [number, number, number] | undefined
       }
-      console.log('[panel] committing surfaceNormal:', worldNormalArr)
-
       st.updateNode(node.id as AnyNodeId, {
         roofSegmentId: targetSegmentId,
         parentId: targetSegmentId,
-        position: [hit.localX, 0, hit.localZ],
+        position: [hit.localX, hit.localY, hit.localZ],
         rotation: finalRotation,
         surfaceNormal: worldNormalArr,
+        visible: true,
         metadata: {},
       })
 
@@ -219,6 +230,18 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
 
     const onCancel = () => {
       wasCancelled = true
+
+      if (isNew) {
+        // Fresh panel from "Add Solar Panel" — never committed to a real
+        // location. Delete it rather than leaving an invisible, mis-parented
+        // panel on segments[0].
+        useScene.temporal.getState().resume()
+        useScene.getState().deleteNode(node.id as AnyNodeId)
+        markToolCancelConsumed()
+        exitMoveMode()
+        return
+      }
+
       useScene.getState().updateNode(node.id as AnyNodeId, {
         position: original.position,
         rotation: original.rotation,
@@ -249,20 +272,14 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
       emitter.off('roof:click', onRoofClick)
       emitter.off('tool:cancel', onCancel)
 
-      const current = useScene.getState().nodes[node.id as AnyNodeId] as SolarPanelNode | undefined
-      const currentMeta = current?.metadata as Record<string, unknown> | undefined
-      if (!(wasCommitted || wasCancelled) && currentMeta?.isTransient) {
-        useScene.getState().updateNode(node.id as AnyNodeId, {
-          position: original.position,
-          rotation: original.rotation,
-          roofSegmentId: original.roofSegmentId as AnyNodeId | undefined,
-          parentId: original.parentId as AnyNodeId | undefined,
-          metadata: original.metadata,
-        })
-        if (original.roofSegmentId) {
-          useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
-        }
-      }
+      // Don't auto-restore or auto-delete in cleanup: React StrictMode runs
+      // setup → cleanup → setup in development, and a cleanup-side delete
+      // would nuke a freshly-created `isNew` panel before the user can click.
+      // Explicit commit (onRoofClick) and explicit cancel (onCancel) handle
+      // both states. If the tool unmounts for some other reason (route change,
+      // tool switch), a non-new panel stays at its original transform — the
+      // isTransient metadata flag is left for a future garbage-collection pass
+      // if we add one.
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
       useScene.temporal.getState().resume()
@@ -270,7 +287,7 @@ export function MoveSolarPanelTool({ node }: { node: SolarPanelNode }) {
   }, [exitMoveMode, node])
 
   return (
-    <group position={previewPos} quaternion={previewQuat} ref={previewRef}>
+    <group position={previewPos} quaternion={previewQuat} ref={previewRef} visible={hasHit}>
       <group rotation-y={node.rotation ?? 0}>
         <mesh
           geometry={previewGeo}

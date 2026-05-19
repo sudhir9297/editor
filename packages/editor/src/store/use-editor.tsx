@@ -176,7 +176,9 @@ type EditorState = {
       | StairSegmentNode
       | BuildingNode
       | ChimneyNode
-        | null,
+      | SkylightNode
+      | SolarPanelNode
+      | null,
   ) => void
   movingWallEndpoint: MovingWallEndpoint | null
   setMovingWallEndpoint: (value: MovingWallEndpoint | null) => void
