@@ -716,6 +716,47 @@ export function getRoofSegmentBrushes(node: RoofSegmentNode): {
 
 const DORMER_DROP_BELOW = 2
 
+// Dormer window dimensions, computed from the dormer's footprint. The window
+// is cut through the GABLE END walls (mesh ±Z after the +π/2 yaw bake — the
+// pentagon-shaped walls with the triangle on top). The wall's horizontal extent
+// is along mesh-X (= dormer.width), so the window's `width` here is in X.
+// The wall's vertical rectangular portion runs from y=0 (foot) to y=dormer.height
+// (eave), so `height` stays within that range.
+export function getDormerSkirtWindowDims(dormer: DormerNode): {
+  width: number
+  height: number
+  centerY: number
+  offsetX: number
+} {
+  const skirtH = DORMER_DROP_BELOW
+  const maxW = Math.max(dormer.width - 0.1, 0.1)
+  const maxH = Math.max(skirtH - 0.1, 0.1)
+  const width = Math.min(Math.max(dormer.windowWidth ?? 1.2, 0.1), maxW)
+  const height = Math.min(Math.max(dormer.windowHeight ?? 1.2, 0.1), maxH)
+  const offsetX = dormer.windowOffsetX ?? 0
+  const offsetY = dormer.windowOffsetY ?? 0
+  const centerY = -(skirtH / 2) + offsetY
+  return { width, height, centerY, offsetX }
+}
+
+export function getDormerWindowDims(dormer: DormerNode): {
+  width: number
+  height: number
+  sillY: number
+  centerY: number
+} {
+  const wallH = Math.max(0.05, dormer.height)
+  const width = Math.min(Math.max(dormer.width * 0.6, 0.2), Math.max(dormer.width - 0.2, 0.1))
+  const height = Math.min(Math.max(wallH * 0.55, 0.2), Math.max(wallH - 0.15, 0.05))
+  // Sit the sill close to the foot (low sill, like a real window) so the window reads
+  // as centred in the visible wall — when the dormer's full wall geometry is shown
+  // (foot at mesh-local y = -DORMER_DROP_BELOW), placing centerY at wallH/2 looks too
+  // high. Anchoring sillY to a small fixed offset keeps the window low in the wall.
+  const sillY = Math.max(0.05, wallH * 0.1)
+  const centerY = sillY + height / 2
+  return { width, height, sillY, centerY }
+}
+
 /**
  * Build the trimmed geometry for a dormer hosted on a roof segment.
  *
@@ -857,6 +898,21 @@ export function generateDormerGeometry(
       hostSolid = null
       dormerSolid = trimmed
     }
+
+    // Cut a window in the skirt wall (the hung portion below the anchor, y < 0)
+    const skirtWin = getDormerSkirtWindowDims(dormer)
+    const skirtCutGeo = new THREE.BoxGeometry(skirtWin.width, skirtWin.height, dormer.depth + 0.4)
+    skirtCutGeo.translate(skirtWin.offsetX, skirtWin.centerY, 0)
+    const skirtCutIndexCount = skirtCutGeo.getIndex()?.count ?? 0
+    skirtCutGeo.clearGroups()
+    skirtCutGeo.addGroup(0, skirtCutIndexCount, 0)
+    computeGeometryBoundsTree(skirtCutGeo)
+    const skirtCutBrush = new Brush(skirtCutGeo, dummyMats)
+    skirtCutBrush.updateMatrixWorld()
+    const withSkirtWindow = csgEvaluator.evaluate(dormerSolid, skirtCutBrush, SUBTRACTION) as Brush
+    dormerSolid.geometry.dispose()
+    skirtCutBrush.geometry.dispose()
+    dormerSolid = withSkirtWindow
 
     resultGeo = csgGeometry(dormerSolid)
     const resultMaterials = csgMaterials(dormerSolid)

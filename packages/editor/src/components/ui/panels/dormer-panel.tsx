@@ -20,6 +20,7 @@ import { ActionButton, ActionGroup } from '../controls/action-button'
 import { PanelSection } from '../controls/panel-section'
 import { SegmentedControl } from '../controls/segmented-control'
 import { SliderControl } from '../controls/slider-control'
+import { ToggleControl } from '../controls/toggle-control'
 import { PanelWrapper } from './panel-wrapper'
 
 const ROOF_TYPE_OPTIONS: { label: string; value: RoofType }[] = [
@@ -262,6 +263,172 @@ export function DormerPanel() {
           unit="m"
           value={Math.round((node.roofHeight ?? 0.6) * 100) / 100}
         />
+      </PanelSection>
+
+      <PanelSection title="Window">
+        {/* Dimensions */}
+        <div className="mb-1 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Dimensions
+        </div>
+        <SliderControl
+          label="Width"
+          max={Math.max(node.width - 0.1, 0.2)}
+          min={0.1}
+          onChange={(v) => previewProp({ windowWidth: v })}
+          onCommit={(v) => commitProp({ windowWidth: v })}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          unit="m"
+          value={Math.round((node.windowWidth ?? 1.2) * 100) / 100}
+        />
+        <SliderControl
+          label="Height"
+          max={1.9}
+          min={0.1}
+          onChange={(v) => previewProp({ windowHeight: v })}
+          onCommit={(v) => commitProp({ windowHeight: v })}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          unit="m"
+          value={Math.round((node.windowHeight ?? 1.2) * 100) / 100}
+        />
+
+        {/* Position */}
+        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Position
+        </div>
+        <SliderControl
+          label={<>X<sub className="ml-[1px] text-[11px] opacity-70">offset</sub></>}
+          max={node.width / 2}
+          min={-node.width / 2}
+          onChange={(v) => previewProp({ windowOffsetX: v })}
+          onCommit={(v) => commitProp({ windowOffsetX: v })}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          unit="m"
+          value={Math.round((node.windowOffsetX ?? 0) * 100) / 100}
+        />
+        <SliderControl
+          label={<>Y<sub className="ml-[1px] text-[11px] opacity-70">offset</sub></>}
+          max={0.5}
+          min={-0.5}
+          onChange={(v) => previewProp({ windowOffsetY: v })}
+          onCommit={(v) => commitProp({ windowOffsetY: v })}
+          precision={2}
+          restoreOnCommit={false}
+          step={0.05}
+          unit="m"
+          value={Math.round((node.windowOffsetY ?? 0) * 100) / 100}
+        />
+
+        {/* Frame */}
+        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Frame
+        </div>
+        <SliderControl
+          label="Thickness"
+          max={0.2}
+          min={0.01}
+          onChange={(v) => previewProp({ windowFrameThickness: v })}
+          onCommit={(v) => commitProp({ windowFrameThickness: v })}
+          precision={3}
+          restoreOnCommit={false}
+          step={0.005}
+          unit="m"
+          value={Math.round((node.windowFrameThickness ?? 0.05) * 1000) / 1000}
+        />
+        <SliderControl
+          label="Depth"
+          max={0.2}
+          min={0.01}
+          onChange={(v) => previewProp({ windowFrameDepth: v })}
+          onCommit={(v) => commitProp({ windowFrameDepth: v })}
+          precision={3}
+          restoreOnCommit={false}
+          step={0.005}
+          unit="m"
+          value={Math.round((node.windowFrameDepth ?? 0.06) * 1000) / 1000}
+        />
+
+        {/* Grid */}
+        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Grid
+        </div>
+        <SliderControl
+          label="Columns"
+          max={8}
+          min={1}
+          onChange={(v) => commitProp({ windowColumns: Math.max(1, Math.min(8, Math.round(v))) })}
+          precision={0}
+          restoreOnCommit={false}
+          step={1}
+          value={node.windowColumns ?? 1}
+        />
+        <SliderControl
+          label="Rows"
+          max={8}
+          min={1}
+          onChange={(v) => commitProp({ windowRows: Math.max(1, Math.min(8, Math.round(v))) })}
+          precision={0}
+          restoreOnCommit={false}
+          step={1}
+          value={node.windowRows ?? 1}
+        />
+        {((node.windowColumns ?? 1) > 1 || (node.windowRows ?? 1) > 1) && (
+          <SliderControl
+            label="Divider"
+            max={0.1}
+            min={0.005}
+            onChange={(v) => previewProp({ windowDividerThickness: v })}
+            onCommit={(v) => commitProp({ windowDividerThickness: v })}
+            precision={3}
+            restoreOnCommit={false}
+            step={0.005}
+            unit="m"
+            value={Math.round((node.windowDividerThickness ?? 0.02) * 1000) / 1000}
+          />
+        )}
+
+        {/* Sill */}
+        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
+          Sill
+        </div>
+        <ToggleControl
+          checked={node.windowSill ?? true}
+          label="Enable Sill"
+          onChange={(checked) => commitProp({ windowSill: checked })}
+        />
+        {(node.windowSill ?? true) && (
+          <>
+            <SliderControl
+              label="Depth"
+              max={0.3}
+              min={0.01}
+              onChange={(v) => previewProp({ windowSillDepth: v })}
+              onCommit={(v) => commitProp({ windowSillDepth: v })}
+              precision={3}
+              restoreOnCommit={false}
+              step={0.01}
+              unit="m"
+              value={Math.round((node.windowSillDepth ?? 0.08) * 1000) / 1000}
+            />
+            <SliderControl
+              label="Thickness"
+              max={0.1}
+              min={0.01}
+              onChange={(v) => previewProp({ windowSillThickness: v })}
+              onCommit={(v) => commitProp({ windowSillThickness: v })}
+              precision={3}
+              restoreOnCommit={false}
+              step={0.005}
+              unit="m"
+              value={Math.round((node.windowSillThickness ?? 0.03) * 1000) / 1000}
+            />
+          </>
+        )}
       </PanelSection>
 
       <PanelSection title="Position">

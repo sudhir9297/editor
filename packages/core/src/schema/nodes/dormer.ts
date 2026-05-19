@@ -4,12 +4,24 @@ import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
 import { RoofType } from './roof-type'
 
+export type DormerSurfaceMaterialRole = 'top' | 'side' | 'wall'
+export type DormerSurfaceMaterialSpec = {
+  material?: z.infer<typeof MaterialSchema>
+  materialPreset?: string
+}
+
 export const DormerNode = BaseNode.extend({
   id: objectId('dormer'),
   type: nodeType('dormer'),
 
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
+  topMaterial: MaterialSchema.optional(),
+  topMaterialPreset: z.string().optional(),
+  sideMaterial: MaterialSchema.optional(),
+  sideMaterialPreset: z.string().optional(),
+  wallMaterial: MaterialSchema.optional(),
+  wallMaterialPreset: z.string().optional(),
 
   roofSegmentId: z.string().optional(),
   position: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
@@ -22,6 +34,19 @@ export const DormerNode = BaseNode.extend({
 
   roofType: RoofType.default('gable'),
   roofHeight: z.number().default(0.83),
+
+  windowWidth: z.number().default(1.2),
+  windowHeight: z.number().default(1.2),
+  windowOffsetX: z.number().default(0),
+  windowOffsetY: z.number().default(0),
+  windowFrameThickness: z.number().default(0.05),
+  windowFrameDepth: z.number().default(0.06),
+  windowColumns: z.number().int().min(1).max(8).default(1),
+  windowRows: z.number().int().min(1).max(8).default(1),
+  windowDividerThickness: z.number().default(0.02),
+  windowSill: z.boolean().default(true),
+  windowSillDepth: z.number().default(0.08),
+  windowSillThickness: z.number().default(0.03),
 }).describe(
   dedent`
   Dormer node — a small house-shaped protrusion sitting on top of a roof
@@ -32,3 +57,47 @@ export const DormerNode = BaseNode.extend({
 )
 
 export type DormerNode = z.infer<typeof DormerNode>
+
+function getLegacyDormerSurfaceMaterial(node: DormerNode): DormerSurfaceMaterialSpec {
+  return {
+    material: node.material,
+    materialPreset: node.materialPreset,
+  }
+}
+
+export function getEffectiveDormerSurfaceMaterial(
+  node: DormerNode,
+  role: DormerSurfaceMaterialRole,
+): DormerSurfaceMaterialSpec {
+  if (role === 'top') {
+    if (node.topMaterial !== undefined || typeof node.topMaterialPreset === 'string') {
+      return { material: node.topMaterial, materialPreset: node.topMaterialPreset }
+    }
+  }
+
+  if (role === 'side') {
+    if (node.sideMaterial !== undefined || typeof node.sideMaterialPreset === 'string') {
+      return { material: node.sideMaterial, materialPreset: node.sideMaterialPreset }
+    }
+  }
+
+  if (role === 'wall') {
+    if (node.wallMaterial !== undefined || typeof node.wallMaterialPreset === 'string') {
+      return { material: node.wallMaterial, materialPreset: node.wallMaterialPreset }
+    }
+  }
+
+  // Cross-fallback: side ↔ wall
+  if (role === 'side') {
+    if (node.wallMaterial !== undefined || typeof node.wallMaterialPreset === 'string') {
+      return { material: node.wallMaterial, materialPreset: node.wallMaterialPreset }
+    }
+  }
+  if (role === 'wall') {
+    if (node.sideMaterial !== undefined || typeof node.sideMaterialPreset === 'string') {
+      return { material: node.sideMaterial, materialPreset: node.sideMaterialPreset }
+    }
+  }
+
+  return getLegacyDormerSurfaceMaterial(node)
+}

@@ -6,6 +6,8 @@ import {
   type ChimneyMaterialRole,
   type ChimneyNode,
   type ColumnNode,
+  type DormerNode,
+  type DormerSurfaceMaterialRole,
   type SkylightMaterialRole,
   type SkylightNode,
   emitter,
@@ -45,6 +47,7 @@ import { type BufferGeometry, Color, type Material, type Mesh, type Object3D } f
 import {
   type ActivePaintMaterial,
   buildChimneyMaterialPatch,
+  buildDormerSurfaceMaterialPatch,
   buildSkylightMaterialPatch,
   buildRoofSurfaceMaterialPatch,
   buildSingleSurfaceMaterialPatch,
@@ -87,6 +90,7 @@ type SelectableNodeType =
   | 'spawn'
   | 'window'
   | 'door'
+  | 'dormer'
 
 type ModifierKeys = {
   meta: boolean
@@ -397,6 +401,43 @@ function applySkylightPaintPreview(
     if (role === 'glass' && mesh.name === 'skylight-glass') {
       restores.push(previewMeshMaterial(mesh, previewMaterial))
     } else if (role === 'frame' && mesh.name === 'skylight-surface') {
+      restores.push(previewMeshMaterial(mesh, previewMaterial))
+    }
+  })
+  if (restores.length === 0) return null
+  return () => {
+    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]?.()
+  }
+}
+
+function applyDormerPaintPreview(
+  node: DormerNode,
+  role: DormerSurfaceMaterialRole,
+  material: ActivePaintMaterial,
+): PaintPreviewCleanup | null {
+  const root = getRegisteredNodeObject(node.id)
+  if (!root) return null
+  const previewMaterial = getSingleSurfacePreviewMaterial(material)
+  if (!previewMaterial) return null
+  const restores: PaintPreviewCleanup[] = []
+  root.traverse((object) => {
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return
+    if (mesh.name === 'dormer-body') {
+      const current = mesh.material as Material | Material[]
+      if (!Array.isArray(current)) return
+      const indices =
+        role === 'top' ? [3] : role === 'side' ? [1] : [0, 2, 4]
+      const previousArray = [...current]
+      const nextArray = [...current]
+      for (const idx of indices) {
+        nextArray[idx] = previewMaterial
+      }
+      mesh.material = nextArray
+      restores.push(() => {
+        mesh.material = previousArray
+      })
+    } else if (role === 'side') {
       restores.push(previewMeshMaterial(mesh, previewMaterial))
     }
   })
@@ -1026,6 +1067,40 @@ export const SelectionManager = () => {
         }
       }
 
+      if (node.type === 'dormer') {
+        const compatible = hasActivePaintMaterial(activePaintMaterial)
+        const materialIndex = getIntersectionMaterialIndex(
+          getEventObject(event as NodeEvent),
+          (event as NodeEvent).faceIndex,
+        )
+        const role: DormerSurfaceMaterialRole =
+          materialIndex === 3 ? 'top' : materialIndex === 1 ? 'side' : 'wall'
+        return {
+          key: `dormer:${node.id}:${role}`,
+          hoveredId: node.id as AnyNodeId,
+          hoverMode: compatible ? 'paint-ready' : 'paint-disabled',
+          apply: compatible
+            ? () => {
+                useScene
+                  .getState()
+                  .updateNode(
+                    node.id as AnyNodeId,
+                    buildDormerSurfaceMaterialPatch(
+                      node as DormerNode,
+                      role,
+                      activePaintMaterial.material,
+                      activePaintMaterial.materialPreset,
+                    ),
+                  )
+              }
+            : null,
+          preview: compatible
+            ? () =>
+                applyDormerPaintPreview(node as DormerNode, role, activePaintMaterial)
+            : () => previewCursor('not-allowed'),
+        }
+      }
+
       if (
         node.type === 'fence' ||
         node.type === 'column' ||
@@ -1148,6 +1223,7 @@ export const SelectionManager = () => {
       'zone',
       'chimney',
       'skylight',
+      'dormer',
       'solar-panel',
     ] as const
 
@@ -1475,6 +1551,7 @@ export const SelectionManager = () => {
       'site',
       'chimney',
       'skylight',
+      'dormer',
       'solar-panel',
     ]
     allTypes.forEach((type) => {
@@ -1551,6 +1628,7 @@ export const SelectionManager = () => {
       'zone',
       'chimney',
       'skylight',
+      'dormer',
       'solar-panel',
     ] as const
 

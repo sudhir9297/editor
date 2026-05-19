@@ -7,6 +7,7 @@ import {
   type CeilingNode,
   type ChimneyNode,
   type DormerNode,
+  type DormerSurfaceMaterialRole,
   type SolarPanelNode,
   type ColumnNode,
   type SkylightNode,
@@ -108,6 +109,7 @@ export type MaterialTargetRole =
   | WallSurfaceSide
   | StairSurfaceMaterialRole
   | RoofSurfaceMaterialRole
+  | DormerSurfaceMaterialRole
   | SingleSurfaceMaterialRole
 
 export type SelectedMaterialTarget = {

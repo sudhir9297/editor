@@ -5,10 +5,13 @@ import {
   type ChimneyMaterialRole,
   type ChimneyNode,
   type ColumnNode,
+  type DormerNode,
+  type DormerSurfaceMaterialRole,
   type SkylightMaterialRole,
   type SkylightNode,
   type FenceNode,
   getCatalogMaterialById,
+  getEffectiveDormerSurfaceMaterial,
   getEffectiveRoofSurfaceMaterial,
   getEffectiveStairSurfaceMaterial,
   getEffectiveWallSurfaceMaterial,
@@ -26,7 +29,7 @@ import {
 
 export type PaintableMaterialTarget = Extract<
   MaterialTarget,
-  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling' | 'chimney' | 'skylight'
+  'wall' | 'roof' | 'stair' | 'fence' | 'column' | 'slab' | 'ceiling' | 'chimney' | 'skylight' | 'dormer'
 >
 
 export type SingleSurfaceMaterialRole = 'surface'
@@ -194,6 +197,32 @@ export function getEffectiveChimneyMaterial(
   return { material: node.material, materialPreset: node.materialPreset }
 }
 
+export function buildDormerSurfaceMaterialPatch(
+  node: DormerNode,
+  targetRole: DormerSurfaceMaterialRole,
+  material: MaterialSchema | undefined,
+  materialPreset: string | undefined,
+): Partial<DormerNode> {
+  const nextSurfaceMaterial = { material, materialPreset }
+  const nextTop =
+    targetRole === 'top' ? nextSurfaceMaterial : getEffectiveDormerSurfaceMaterial(node, 'top')
+  const nextSide =
+    targetRole === 'side' ? nextSurfaceMaterial : getEffectiveDormerSurfaceMaterial(node, 'side')
+  const nextWall =
+    targetRole === 'wall' ? nextSurfaceMaterial : getEffectiveDormerSurfaceMaterial(node, 'wall')
+
+  return {
+    topMaterial: nextTop.material,
+    topMaterialPreset: nextTop.materialPreset,
+    sideMaterial: nextSide.material,
+    sideMaterialPreset: nextSide.materialPreset,
+    wallMaterial: nextWall.material,
+    wallMaterialPreset: nextWall.materialPreset,
+    material: undefined,
+    materialPreset: undefined,
+  }
+}
+
 export function resolveActivePaintMaterialFromSelection(params: {
   nodes: Record<string, any>
   selectedId: string | null
@@ -203,6 +232,7 @@ export function resolveActivePaintMaterialFromSelection(params: {
       | WallSurfaceSide
       | StairSurfaceMaterialRole
       | RoofSurfaceMaterialRole
+      | DormerSurfaceMaterialRole
       | SingleSurfaceMaterialRole
   } | null
 }): ActivePaintMaterial | null {
@@ -314,6 +344,29 @@ export function resolveActivePaintMaterialFromSelection(params: {
   }
 
   if (
+    selectedNode.type === 'dormer' &&
+    (selectedMaterialTarget.role === 'top' ||
+      selectedMaterialTarget.role === 'side' ||
+      selectedMaterialTarget.role === 'wall')
+  ) {
+    const surface = getEffectiveDormerSurfaceMaterial(
+      selectedNode,
+      selectedMaterialTarget.role as DormerSurfaceMaterialRole,
+    )
+    return hasActivePaintMaterial({
+      material: surface.material,
+      materialPreset: surface.materialPreset,
+      sourceTarget: 'dormer',
+    })
+      ? {
+          material: surface.material,
+          materialPreset: surface.materialPreset,
+          sourceTarget: 'dormer',
+        }
+      : null
+  }
+
+  if (
     (selectedNode.type === 'fence' ||
       selectedNode.type === 'column' ||
       selectedNode.type === 'slab' ||
@@ -381,6 +434,10 @@ export function resolvePaintTargetFromSelection(params: {
 
   if (selectedNode.type === 'skylight') {
     return 'skylight'
+  }
+
+  if (selectedNode.type === 'dormer') {
+    return 'dormer'
   }
 
   return null
