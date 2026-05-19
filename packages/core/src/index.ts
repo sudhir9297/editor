@@ -4,8 +4,8 @@ export type {
   CameraControlFitSceneEvent,
   CeilingEvent,
   ChimneyEvent,
-  SkylightEvent,
   ColumnEvent,
+  DormerEvent,
   DoorEvent,
   ElevatorEvent,
   EventSuffix,
@@ -17,6 +17,7 @@ export type {
   RoofEvent,
   RoofSegmentEvent,
   SiteEvent,
+  SkylightEvent,
   SlabEvent,
   SolarPanelEvent,
   SpawnEvent,
@@ -70,8 +71,8 @@ export * from './schema'
 export {
   SOLAR_PANEL_PRESET_LABELS,
   SOLAR_PANEL_PRESETS,
-  SolarPanelPresetKey,
   type SolarPanelPresetDims,
+  SolarPanelPresetKey,
 } from './solar-panel-presets'
 export {
   getSceneHistoryPauseDepth,
@@ -86,6 +87,8 @@ export {
   type ElevatorInteractiveState,
   type ElevatorPhase,
   type ItemInteractiveState,
+  type SkylightAnimationState,
+  type SkylightInteractiveState,
   useInteractive,
   type WindowAnimationState,
   type WindowInteractiveState,

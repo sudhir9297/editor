@@ -2,6 +2,7 @@ import {
   type AnyNode,
   type AnyNodeId,
   type ChimneyNode,
+  type DormerNode,
   type RoofNode,
   type RoofSegmentNode,
   type RoofType,
@@ -83,8 +84,13 @@ export const RoofSystem = () => {
       const node = nodes[id]
       if (!node) return
 
-      // A chimney, skylight, or solar-panel edit dirties its host roof so the merged geometry rebuilds.
-      if (node.type === 'chimney' || node.type === 'skylight' || node.type === 'solar-panel') {
+      // A chimney, skylight, solar-panel, or dormer edit dirties its host roof so the merged geometry rebuilds.
+      if (
+        node.type === 'chimney' ||
+        node.type === 'skylight' ||
+        node.type === 'solar-panel' ||
+        node.type === 'dormer'
+      ) {
         const seg = (node as { roofSegmentId?: string }).roofSegmentId
           ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
           : undefined
@@ -240,6 +246,8 @@ function updateMergedRoofGeometry(
         cut = buildChimneyCutBrush(childElem as ChimneyNode, child)
       } else if (childElem.type === 'skylight') {
         cut = buildSkylightCutBrush(childElem as SkylightNode, child)
+      } else if (childElem.type === 'dormer') {
+        cut = buildDormerCutBrush(childElem as DormerNode, child)
       }
       if (!cut) continue
 
@@ -1234,6 +1242,46 @@ export function buildSkylightCutBrush(
   }
 
   geo.translate(lx, surfaceY, lz)
+
+  const indexCount = geo.getIndex()?.count ?? 0
+  geo.clearGroups()
+  geo.addGroup(0, indexCount, 0)
+
+  computeGeometryBoundsTree(geo)
+  const brush = new Brush(geo, dummyMats)
+  brush.updateMatrixWorld()
+  return brush
+}
+
+/**
+ * Build a vertical cut brush for a dormer in its host segment's local space.
+ * The dormer is gravity-aligned (walls go straight up) so the cut is a vertical
+ * box at the dormer footprint, tall enough to pierce every roof layer from
+ * above the peak down through the walls.
+ */
+export function buildDormerCutBrush(
+  dormer: DormerNode,
+  segment: RoofSegmentNode,
+): Brush | null {
+  const inflate = Math.max(0, dormer.cutoutOffset ?? 0.01)
+  const w = Math.max(0.05, dormer.width + 2 * inflate)
+  const d = Math.max(0.05, dormer.depth + 2 * inflate)
+
+  const cx = dormer.position[0]
+  const cz = dormer.position[2]
+
+  const peakY =
+    segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
+  const topY = peakY + 1.0
+  const baseY = -0.5
+  const h = topY - baseY
+  const centerY = (topY + baseY) / 2
+
+  const geo = new THREE.BoxGeometry(w, h, d)
+  if (Math.abs(dormer.rotation) > 1e-4) {
+    geo.rotateY(dormer.rotation)
+  }
+  geo.translate(cx, centerY, cz)
 
   const indexCount = geo.getIndex()?.count ?? 0
   geo.clearGroups()

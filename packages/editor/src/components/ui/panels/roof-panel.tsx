@@ -5,6 +5,8 @@ import {
   type AnyNodeId,
   type ChimneyNode,
   ChimneyNode as ChimneyNodeSchema,
+  type DormerNode,
+  DormerNode as DormerNodeSchema,
   type RoofNode,
   type SkylightNode,
   SkylightNode as SkylightNodeSchema,
@@ -106,6 +108,25 @@ export function RoofPanel() {
     setMovingNode(skylight)
   }, [node, segments, createNode, setSelection, setMovingNode])
 
+  const handleAddDormer = useCallback(() => {
+    if (!node) return
+    const firstSegment = segments[0]
+    if (!firstSegment) {
+      console.warn('[roof-panel] Add Dormer: roof has no segments yet.')
+      return
+    }
+    const dormer = DormerNodeSchema.parse({
+      roofSegmentId: firstSegment.id,
+      parentId: firstSegment.id,
+      position: [0, 0, 0],
+      visible: false,
+      metadata: { isNew: true, isTransient: true },
+    })
+    createNode(dormer, firstSegment.id as AnyNodeId)
+    setSelection({ selectedIds: [dormer.id as AnyNode['id']] })
+    setMovingNode(dormer)
+  }, [node, segments, createNode, setSelection, setMovingNode])
+
   const handleAddSolarPanel = useCallback(() => {
     if (!node) return
     const firstSegment = segments[0]
@@ -175,6 +196,22 @@ export function RoofPanel() {
         for (const childId of seg.children ?? []) {
           const child = s.nodes[childId as AnyNodeId] as SolarPanelNode | undefined
           if (child?.type === 'solar-panel') out.push(child)
+        }
+      }
+      return out
+    }),
+  )
+
+  const dormers = useScene(
+    useShallow((s) => {
+      if (!node) return []
+      const out: DormerNode[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = s.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) {
+          const child = s.nodes[childId as AnyNodeId] as DormerNode | undefined
+          if (child?.type === 'dormer') out.push(child)
         }
       }
       return out
@@ -312,6 +349,27 @@ export function RoofPanel() {
                 icon={<Plus className="h-3.5 w-3.5" />}
                 label="Add Solar Panel"
                 onClick={handleAddSolarPanel}
+              />
+            </ActionGroup>
+          </div>
+          <div className="flex flex-col gap-1">
+            {dormers.map((dormer, i) => (
+              <button
+                className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+                key={dormer.id}
+                onClick={() => setSelection({ selectedIds: [dormer.id as AnyNode['id']] })}
+                type="button"
+              >
+                <span className="truncate">{dormer.name || `Dormer ${i + 1}`}</span>
+                <span className="text-muted-foreground text-xs">dormer</span>
+              </button>
+            ))}
+            <ActionGroup>
+              <ActionButton
+                disabled={segments.length === 0}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label="Add Dormer"
+                onClick={handleAddDormer}
               />
             </ActionGroup>
           </div>

@@ -26,6 +26,7 @@ import { sfxEmitter } from '../../../lib/sfx-bus'
 import useEditor from '../../../store/use-editor'
 import { CeilingPanel } from './ceiling-panel'
 import { ChimneyPanel } from './chimney-panel'
+import { DormerPanel } from './dormer-panel'
 import { SkylightPanel } from './skylight-panel'
 import { SolarPanelPanel } from './solar-panel-panel'
 import { ColumnPanel } from './column-panel'
@@ -121,6 +122,8 @@ function panelForType(type: string | null) {
       return <SkylightPanel />
     case 'solar-panel':
       return <SolarPanelPanel />
+    case 'dormer':
+      return <DormerPanel />
     default:
       return null
   }

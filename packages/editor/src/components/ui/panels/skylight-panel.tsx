@@ -1,11 +1,14 @@
 'use client'
 
 import {
+  SKYLIGHT_TYPE_ORDER,
+  SKYLIGHT_TYPE_PRESETS,
   type AnyNode,
   type AnyNodeId,
   type RoofNode,
   type RoofSegmentNode,
   type SkylightNode,
+  type SkylightType,
   sceneRegistry,
   useLiveNodeOverrides,
   useScene,
@@ -14,6 +17,7 @@ import { Vector3 } from 'three'
 import { useViewer } from '@pascal-app/viewer'
 import { Trash2 } from 'lucide-react'
 import { useCallback } from 'react'
+import { cn } from '../../../lib/utils'
 import { sfxEmitter } from '../../../lib/sfx-bus'
 import { ActionButton, ActionGroup } from '../controls/action-button'
 import { PanelSection } from '../controls/panel-section'
@@ -220,6 +224,33 @@ export function SkylightPanel() {
     commitProp({ rotation: newWorldRot - ancestorWorldY })
   }
 
+  const activeSkylightType = node.skylightType ?? 'flat'
+
+  const handleTypeChange = (skylightType: SkylightType) => {
+    const preset = SKYLIGHT_TYPE_PRESETS[skylightType]
+    commitProp({
+      skylightType,
+      width: preset.width,
+      height: preset.height,
+      frameThickness: preset.frameThickness,
+      frameDepth: preset.frameDepth,
+      glassThickness: preset.glassThickness,
+      curb: preset.curb,
+      curbHeight: preset.curbHeight,
+      cutoutOffset: preset.cutoutOffset,
+      lanternHeight: preset.lanternHeight,
+      lanternTopScale: preset.lanternTopScale,
+      openingAngle: preset.openingAngle,
+      openingSide: preset.openingSide,
+      operationState: preset.operationState,
+      motorHousing: preset.motorHousing,
+      slideFraction: preset.slideFraction,
+      slideDirection: preset.slideDirection,
+      trackWidth: preset.trackWidth,
+      motorHousingSize: preset.motorHousingSize,
+    } as Partial<SkylightNode>)
+  }
+
   return (
     <PanelWrapper
       icon="/icons/roof.png"
@@ -228,6 +259,167 @@ export function SkylightPanel() {
       title={node.name || 'Skylight'}
       width={300}
     >
+      <PanelSection title="Type">
+        <div className="grid grid-cols-2 gap-1.5 px-1 pt-1">
+          {SKYLIGHT_TYPE_ORDER.map((skylightType) => {
+            const isSelected = activeSkylightType === skylightType
+            return (
+              <button
+                className={cn(
+                  'flex min-h-12 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors',
+                  isSelected
+                    ? 'border-orange-400/60 bg-orange-400/10 text-foreground'
+                    : 'border-border/50 bg-[#2C2C2E] text-muted-foreground hover:bg-[#3e3e3e] hover:text-foreground',
+                )}
+                key={skylightType}
+                onClick={() => handleTypeChange(skylightType)}
+                type="button"
+              >
+                <span className="min-w-0 truncate font-medium">
+                  {SKYLIGHT_TYPE_PRESETS[skylightType].label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <SliderControl
+          label="Glass Thickness"
+          max={0.05}
+          min={0.002}
+          onChange={(v) => previewProp({ glassThickness: v })}
+          onCommit={(v) => commitProp({ glassThickness: v })}
+          precision={3}
+          restoreOnCommit={false}
+          step={0.001}
+          unit="m"
+          value={Math.round((node.glassThickness ?? 0.01) * 1000) / 1000}
+        />
+        {activeSkylightType === 'lantern' && (
+          <>
+            <SliderControl
+              label="Lantern Height"
+              max={1.0}
+              min={0.05}
+              onChange={(v) => previewProp({ lanternHeight: v })}
+              onCommit={(v) => commitProp({ lanternHeight: v })}
+              precision={3}
+              restoreOnCommit={false}
+              step={0.01}
+              unit="m"
+              value={Math.round((node.lanternHeight ?? 0.25) * 1000) / 1000}
+            />
+            <SliderControl
+              label="Top Scale"
+              max={0.95}
+              min={0}
+              onChange={(v) => previewProp({ lanternTopScale: v })}
+              onCommit={(v) => commitProp({ lanternTopScale: v })}
+              precision={2}
+              restoreOnCommit={false}
+              step={0.05}
+              unit=""
+              value={Math.round((node.lanternTopScale ?? 0.25) * 100) / 100}
+            />
+          </>
+        )}
+        {activeSkylightType === 'opening' && (
+          <>
+            <SliderControl
+              label="Open"
+              max={1}
+              min={0}
+              onChange={(v) => previewProp({ operationState: v })}
+              onCommit={(v) => commitProp({ operationState: v })}
+              precision={2}
+              restoreOnCommit={false}
+              step={0.01}
+              unit=""
+              value={Math.round((node.operationState ?? 0) * 100) / 100}
+            />
+            <SliderControl
+              label="Opening Angle"
+              max={80}
+              min={0}
+              onChange={(deg) => previewProp({ openingAngle: (deg * Math.PI) / 180 })}
+              onCommit={(deg) => commitProp({ openingAngle: (deg * Math.PI) / 180 })}
+              precision={0}
+              restoreOnCommit={false}
+              step={1}
+              unit="°"
+              value={Math.round(((node.openingAngle ?? Math.PI / 10) * 180) / Math.PI)}
+            />
+            <SegmentedControl
+              onChange={(v) => commitProp({ openingSide: v as SkylightNode['openingSide'] })}
+              options={[
+                { label: 'Top', value: 'top' },
+                { label: 'Bottom', value: 'bottom' },
+                { label: 'Left', value: 'left' },
+                { label: 'Right', value: 'right' },
+              ]}
+              value={(node.openingSide ?? 'top') as any}
+            />
+            <SegmentedControl
+              onChange={(v) => commitProp({ motorHousing: v === 'yes' })}
+              options={[
+                { label: 'Motor', value: 'yes' },
+                { label: 'No Motor', value: 'no' },
+              ]}
+              value={(node.motorHousing ?? false) ? 'yes' : 'no'}
+            />
+            {(node.motorHousing ?? false) && (
+              <SliderControl
+                label="Motor Housing"
+                max={0.2}
+                min={0.03}
+                onChange={(v) => previewProp({ motorHousingSize: v })}
+                onCommit={(v) => commitProp({ motorHousingSize: v })}
+                precision={3}
+                restoreOnCommit={false}
+                step={0.005}
+                unit="m"
+                value={Math.round((node.motorHousingSize ?? 0.08) * 1000) / 1000}
+              />
+            )}
+          </>
+        )}
+        {activeSkylightType === 'sliding' && (
+          <>
+            <SliderControl
+              label="Open"
+              max={1}
+              min={0}
+              onChange={(v) => previewProp({ operationState: v })}
+              onCommit={(v) => commitProp({ operationState: v })}
+              precision={2}
+              restoreOnCommit={false}
+              step={0.01}
+              unit=""
+              value={Math.round((node.operationState ?? 0) * 100) / 100}
+            />
+            <SegmentedControl
+              onChange={(v) => commitProp({ slideDirection: v as SkylightNode['slideDirection'] })}
+              options={[
+                { label: 'Along Z', value: 'z' },
+                { label: 'Along X', value: 'x' },
+              ]}
+              value={(node.slideDirection ?? 'z') as any}
+            />
+            <SliderControl
+              label="Track Width"
+              max={0.12}
+              min={0.02}
+              onChange={(v) => previewProp({ trackWidth: v })}
+              onCommit={(v) => commitProp({ trackWidth: v })}
+              precision={3}
+              restoreOnCommit={false}
+              step={0.005}
+              unit="m"
+              value={Math.round((node.trackWidth ?? 0.045) * 1000) / 1000}
+            />
+          </>
+        )}
+      </PanelSection>
+
       <PanelSection title="Dimensions">
         <SliderControl
           label="Width"

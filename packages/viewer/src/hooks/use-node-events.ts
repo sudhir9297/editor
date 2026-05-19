@@ -6,6 +6,8 @@ import {
   type ChimneyEvent,
   type ChimneyNode,
   type ColumnEvent,
+  type DormerEvent,
+  type DormerNode,
   type SkylightEvent,
   type SkylightNode,
   type ColumnNode,
@@ -69,6 +71,7 @@ type NodeConfig = {
   chimney: { node: ChimneyNode; event: ChimneyEvent }
   skylight: { node: SkylightNode; event: SkylightEvent }
   'solar-panel': { node: SolarPanelNode; event: SolarPanelEvent }
+  dormer: { node: DormerNode; event: DormerEvent }
 }
 
 type NodeType = keyof NodeConfig

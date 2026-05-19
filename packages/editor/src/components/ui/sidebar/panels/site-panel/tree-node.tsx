@@ -57,6 +57,7 @@ import { cn } from '../../../../../lib/utils'
 import { BuildingTreeNode } from './building-tree-node'
 import { CeilingTreeNode } from './ceiling-tree-node'
 import { ChimneyTreeNode } from './chimney-tree-node'
+import { DormerTreeNode } from './dormer-tree-node'
 import { SkylightTreeNode } from './skylight-tree-node'
 import { SolarPanelTreeNode } from './solar-panel-tree-node'
 import { ColumnTreeNode } from './column-tree-node'
@@ -121,6 +122,8 @@ export const TreeNode = memo(function TreeNode({ nodeId, depth = 0, isLast }: Tr
       return <SkylightTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
     case 'solar-panel':
       return <SolarPanelTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
+    case 'dormer':
+      return <DormerTreeNode depth={depth} isLast={isLast} nodeId={nodeId} />
     case 'zone':
       return <ZoneTreeNode depth={depth} isLast={isLast} nodeId={nodeId as `zone_${string}`} />
     default:

@@ -17,6 +17,7 @@ import { ItemLightSystem } from '../../systems/item-light/item-light-system'
 import { LevelSystem } from '../../systems/level/level-system'
 import { RoofSystem } from '../../systems/roof/roof-system'
 import { ScanSystem } from '../../systems/scan/scan-system'
+import { SkylightAnimationSystem } from '../../systems/skylight/skylight-animation-system'
 import { SlabSystem } from '../../systems/slab/slab-system'
 import { StairSystem } from '../../systems/stair/stair-system'
 import { WallCutout } from '../../systems/wall/wall-cutout'
@@ -235,6 +236,7 @@ const Viewer: React.FC<ViewerProps> = ({
         <ElevatorOpeningSystem />
         <StairOpeningSystem />
         <WindowAnimationSystem />
+        <SkylightAnimationSystem />
         <DoorSystem />
         <FenceSystem />
         <ItemSystem />

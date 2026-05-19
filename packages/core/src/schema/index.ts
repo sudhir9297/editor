@@ -27,8 +27,7 @@ export {
 export { BuildingNode } from './nodes/building'
 export { CeilingNode } from './nodes/ceiling'
 export { ChimneyMaterialRole, ChimneyNode } from './nodes/chimney'
-export { SkylightMaterialRole, SkylightNode } from './nodes/skylight'
-export { SolarPanelMaterialRole, SolarPanelNode } from './nodes/solar-panel'
+export { DormerMaterialRole, DormerNode } from './nodes/dormer'
 export {
   COLUMN_PRESETS,
   ColumnBaseStyle,
@@ -78,7 +77,18 @@ export { RoofSegmentNode, RoofType } from './nodes/roof-segment'
 export { ScanNode } from './nodes/scan'
 // Nodes
 export { SiteNode } from './nodes/site'
+export {
+  SKYLIGHT_TYPE_ORDER,
+  SKYLIGHT_TYPE_PRESETS,
+  SkylightMaterialRole,
+  SkylightNode,
+  SkylightOpeningSide,
+  SkylightSlideDirection,
+  SkylightType,
+  type SkylightTypePreset,
+} from './nodes/skylight'
 export { SlabNode } from './nodes/slab'
+export { SolarPanelMaterialRole, SolarPanelNode } from './nodes/solar-panel'
 export { SpawnNode } from './nodes/spawn'
 export type { StairSurfaceMaterialRole, StairSurfaceMaterialSpec } from './nodes/stair'
 export {

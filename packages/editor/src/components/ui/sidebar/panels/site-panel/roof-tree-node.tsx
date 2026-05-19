@@ -177,7 +177,7 @@ function RoofSegmentTreeNode({
       if (!seg) return [] as string[]
       return (seg.children ?? []).filter((childId) => {
         const t = s.nodes[childId as AnyNodeId]?.type
-        return t === 'chimney' || t === 'skylight' || t === 'solar-panel'
+        return t === 'chimney' || t === 'skylight' || t === 'solar-panel' || t === 'dormer'
       })
     }),
   )
