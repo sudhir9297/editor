@@ -12,7 +12,7 @@ import * as THREE from 'three'
 import { useFollowSegmentDrag } from '../../../hooks/use-follow-segment-drag'
 import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
-import { generateDormerGeometry, getDormerSkirtWindowDims } from '../../../systems/roof/roof-system'
+import { generateDormerGeometry, getDormerExposedFaces, getDormerSkirtWindowDims } from '../../../systems/roof/roof-system'
 
 const dormerGlassMaterial = new THREE.MeshStandardMaterial({
   color: 0x9c_c8_e6,
@@ -24,9 +24,9 @@ const dormerGlassMaterial = new THREE.MeshStandardMaterial({
 })
 
 // Three distinct dormer materials: wall, side, roof top
-const dormerWallMat = new THREE.MeshStandardMaterial({ color: 0xd9_d6_cf, roughness: 0.9, side: THREE.DoubleSide })
-const dormerSideMat = new THREE.MeshStandardMaterial({ color: 0x3a_3a_3a, roughness: 0.85, side: THREE.FrontSide })
-const dormerRoofMat = new THREE.MeshStandardMaterial({ color: 0x4b_3a_30, roughness: 0.85, side: THREE.FrontSide })
+const dormerWallMat = new THREE.MeshStandardMaterial({ color: 0xff_ff_ff, roughness: 0.9, side: THREE.DoubleSide })
+const dormerSideMat = new THREE.MeshStandardMaterial({ color: 0xff_ff_ff, roughness: 0.9, side: THREE.FrontSide })
+const dormerRoofMat = new THREE.MeshStandardMaterial({ color: 0xff_ff_ff, roughness: 0.9, side: THREE.FrontSide })
 
 // Geometry slots 0-4 mapped to the 3 materials:
 //   0 = Wall          → dormerWallMat
@@ -373,12 +373,62 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
     }
   }, [winGeo])
 
-  const gableZ = node.depth / 2
+  const gableHalfZ = node.depth / 2
   const winX = skirtWin.offsetX
   const winY = skirtWin.centerY
-  const wallZ = gableZ
+
+  const exposed = useMemo(
+    () => (segment ? getDormerExposedFaces(node, segment) : { front: true, back: false }),
+    [
+      segment,
+      node.roofType,
+      node.width,
+      node.depth,
+      node.height,
+      node.roofHeight,
+      node.position[0],
+      node.position[1],
+      node.position[2],
+    ],
+  )
 
   if (!(segment && geometry)) return null
+
+  const renderWindowAssembly = (zPos: number, keyPrefix: string) => (
+    <>
+      <group name={`dormer-skirt-window-${keyPrefix}`} position={[winX, winY, zPos]}>
+        {winGeo.glassPanes.map((pane, i) => (
+          <mesh
+            geometry={pane.geo}
+            key={`${keyPrefix}-glass-${i}`}
+            material={dormerGlassMaterial}
+            position={pane.pos}
+          />
+        ))}
+        {winGeo.frameBars.map((bar, i) => (
+          <mesh
+            geometry={bar.geo}
+            key={`${keyPrefix}-bar-${i}`}
+            material={frameSideMat}
+            position={bar.pos}
+          />
+        ))}
+      </group>
+      {showSill && winGeo.sill && (
+        <mesh
+          geometry={winGeo.sill}
+          key={`${keyPrefix}-sill`}
+          material={frameSideMat}
+          name={`dormer-skirt-sill-${keyPrefix}`}
+          position={[
+            winX + winGeo.sillPos[0],
+            winY + winGeo.sillPos[1],
+            zPos + winGeo.sillPos[2],
+          ]}
+        />
+      )}
+    </>
+  )
 
   return (
     <group
@@ -397,40 +447,8 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
             name="dormer-body"
             receiveShadow
           />
-          {/* Window assembly */}
-          <group name="dormer-skirt-window" position={[winX, winY, wallZ]}>
-            {/* Glass panes */}
-            {winGeo.glassPanes.map((pane, i) => (
-              <mesh
-                geometry={pane.geo}
-                key={`glass-${i}`}
-                material={dormerGlassMaterial}
-                position={pane.pos}
-              />
-            ))}
-            {/* Frame + divider bars */}
-            {winGeo.frameBars.map((bar, i) => (
-              <mesh
-                geometry={bar.geo}
-                key={`bar-${i}`}
-                material={frameSideMat}
-                position={bar.pos}
-              />
-            ))}
-          </group>
-          {/* Sill */}
-          {showSill && winGeo.sill && (
-            <mesh
-              geometry={winGeo.sill}
-              material={frameSideMat}
-              name="dormer-skirt-sill"
-              position={[
-                winX + winGeo.sillPos[0],
-                winY + winGeo.sillPos[1],
-                wallZ + winGeo.sillPos[2],
-              ]}
-            />
-          )}
+          {exposed.front && renderWindowAssembly(gableHalfZ, 'front')}
+          {exposed.back && renderWindowAssembly(-gableHalfZ, 'back')}
         </group>
       </group>
     </group>

@@ -54,16 +54,31 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
 
   const previewRef = useRef<THREE.Group>(null!)
   const [previewPos, setPreviewPos] = useState<[number, number, number]>([0, 0, 0])
+  const [previewRotY, setPreviewRotY] = useState(0)
   const [hasHit, setHasHit] = useState(false)
 
   const previewGeo = useMemo(() => {
     const w = Math.max(0.01, Number.isFinite(node.width) ? node.width : 2)
     const wallH = Math.max(0.01, Number.isFinite(node.height) ? node.height : 1.2)
     const roofH = Math.max(0, Number.isFinite(node.roofHeight) ? node.roofHeight : 0.6)
-    const h = wallH + roofH
     const d = Math.max(0.01, Number.isFinite(node.depth) ? node.depth : 1.5)
-    const geo = new THREE.BoxGeometry(w, h, d)
-    geo.translate(0, h / 2, 0)
+    const hw = w / 2
+
+    const dropBelow = 2
+
+    const shape = new THREE.Shape()
+    shape.moveTo(-hw, -dropBelow)
+    shape.lineTo(hw, -dropBelow)
+    shape.lineTo(hw, wallH)
+    shape.lineTo(0, wallH + roofH)
+    shape.lineTo(-hw, wallH)
+    shape.closePath()
+
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: d,
+      bevelEnabled: false,
+    })
+    geo.translate(0, 0, -d / 2)
     return geo
   }, [node.width, node.depth, node.height, node.roofHeight])
 
@@ -125,6 +140,24 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
       lastWorldNormal = n
     }
 
+    const computeSegmentWorldRotY = (event: RoofEvent): number => {
+      const roof = event.node as RoofNode
+      const st = useScene.getState()
+      const hit = resolveSegmentFromWorldPoint(
+        roof,
+        event.position[0],
+        event.position[1],
+        event.position[2],
+        st,
+      )
+      if (!hit) return 0
+      const segObj = sceneRegistry.nodes.get(hit.segment.id)
+      if (!segObj) return 0
+      segObj.updateWorldMatrix(true, false)
+      const euler = new THREE.Euler().setFromRotationMatrix(segObj.matrixWorld, 'YXZ')
+      return euler.y
+    }
+
     const onRoofMove = (event: RoofEvent) => {
       const sx = Math.round(event.position[0] * 20) / 20
       const sz = Math.round(event.position[2] * 20) / 20
@@ -135,6 +168,7 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
       }
       captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setPreviewRotY(computeSegmentWorldRotY(event) + (node.rotation ?? 0))
       setHasHit(true)
       event.stopPropagation()
     }
@@ -142,6 +176,7 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
     const onRoofEnter = (event: RoofEvent) => {
       captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      setPreviewRotY(computeSegmentWorldRotY(event) + (node.rotation ?? 0))
       setHasHit(true)
       event.stopPropagation()
     }
@@ -245,10 +280,8 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
   }, [exitMoveMode, node])
 
   return (
-    <group position={previewPos} ref={previewRef} visible={hasHit}>
-      <group rotation-y={node.rotation ?? 0}>
-        <mesh geometry={previewGeo} layers={EDITOR_LAYER} material={previewMaterial} />
-      </group>
+    <group position={previewPos} ref={previewRef} rotation-y={previewRotY} visible={hasHit}>
+      <mesh geometry={previewGeo} layers={EDITOR_LAYER} material={previewMaterial} />
     </group>
   )
 }

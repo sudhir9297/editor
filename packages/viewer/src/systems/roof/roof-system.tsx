@@ -716,6 +716,55 @@ export function getRoofSegmentBrushes(node: RoofSegmentNode): {
 
 const DORMER_DROP_BELOW = 2
 
+/**
+ * Determine which faces of a dormer are exposed (not fully buried in the host
+ * roof).  "front" = mesh-local +Z, "back" = mesh-local −Z.
+ *
+ * The dormer sits at `node.position` in segment-local space, with its depth
+ * along the Z axis (accounting for node.rotation). Each face's Z coordinate
+ * on the host segment determines the roof surface height there. A face is
+ * exposed when the dormer's total height exceeds the host roof surface at
+ * that Z (the dormer sticks out above the slope).
+ */
+export function getDormerExposedFaces(
+  dormer: DormerNode,
+  hostSegment: RoofSegmentNode,
+): { front: boolean; back: boolean } {
+  const halfDepth = dormer.depth / 2
+  const dormerZ = dormer.position[2] ?? 0
+  const dormerY = dormer.position[1] ?? 0
+  const rot = dormer.rotation ?? 0
+
+  // Face centers in segment-local Z (accounting for dormer yaw)
+  const frontZ = dormerZ + halfDepth * Math.cos(rot)
+  const backZ = dormerZ - halfDepth * Math.cos(rot)
+
+  const dormerTop = dormerY + dormer.height + dormer.roofHeight
+
+  const hostWh = hostSegment.wallHeight ?? 0.5
+  const hostRh = hostSegment.roofType === 'flat' ? 0 : (hostSegment.roofHeight ?? 2.5)
+  const hostDepth = hostSegment.depth ?? 4
+
+  const roofHeightAtZ = (segZ: number): number => {
+    const hostType = hostSegment.roofType ?? 'gable'
+    if (hostType === 'flat') return hostWh
+    if (hostType === 'shed') {
+      const t = Math.max(0, Math.min(1, (segZ + hostDepth / 2) / Math.max(hostDepth, 0.01)))
+      return hostWh + hostRh * (1 - t)
+    }
+    // Gable / hip / etc: ridge at z=0, eave at ±depth/2
+    const halfD = Math.max(hostDepth / 2, 0.01)
+    const t = Math.max(0, Math.min(1, Math.abs(segZ) / halfD))
+    return hostWh + hostRh * (1 - t)
+  }
+
+  const margin = 0.1
+  return {
+    front: dormerTop > roofHeightAtZ(frontZ) - margin,
+    back: dormerTop > roofHeightAtZ(backZ) - margin,
+  }
+}
+
 // Dormer window dimensions, computed from the dormer's footprint. The window
 // is cut through the GABLE END walls (mesh ±Z after the +π/2 yaw bake — the
 // pentagon-shaped walls with the triangle on top). The wall's horizontal extent
@@ -1008,31 +1057,41 @@ export function generateDormerGeometry(
       dormerSolid = trimmed
     }
 
-    // Cut a window in the skirt wall (the hung portion below the anchor, y < 0)
+    // Cut windows in the skirt wall on each exposed gable face.
+    // After the yaw bake, front gable = +Z, back gable = −Z.
+    const exposed = getDormerExposedFaces(dormer, hostSegment)
     const skirtWin = getDormerSkirtWindowDims(dormer)
-    const skirtCutGeo = createDormerWindowCutGeometry(
-      dormer,
-      skirtWin.width,
-      skirtWin.height,
-      dormer.depth + 0.4,
-    )
-    skirtCutGeo.translate(skirtWin.offsetX, skirtWin.centerY, 0)
-    if (!skirtCutGeo.getIndex()) {
-      const posCount = skirtCutGeo.getAttribute('position').count
-      const indices = new Uint32Array(posCount)
-      for (let i = 0; i < posCount; i++) indices[i] = i
-      skirtCutGeo.setIndex(new THREE.BufferAttribute(indices, 1))
+    const gableHalfZ = dormer.depth / 2
+    const cutDepth = 0.4
+
+    const cutFace = (zSign: number) => {
+      const cutGeo = createDormerWindowCutGeometry(
+        dormer,
+        skirtWin.width,
+        skirtWin.height,
+        cutDepth,
+      )
+      cutGeo.translate(skirtWin.offsetX, skirtWin.centerY, zSign * gableHalfZ)
+      if (!cutGeo.getIndex()) {
+        const posCount = cutGeo.getAttribute('position').count
+        const idx = new Uint32Array(posCount)
+        for (let i = 0; i < posCount; i++) idx[i] = i
+        cutGeo.setIndex(new THREE.BufferAttribute(idx, 1))
+      }
+      const idxCount = cutGeo.getIndex()!.count
+      cutGeo.clearGroups()
+      cutGeo.addGroup(0, idxCount, 0)
+      computeGeometryBoundsTree(cutGeo)
+      const brush = new Brush(cutGeo, dummyMats)
+      brush.updateMatrixWorld()
+      const result = csgEvaluator.evaluate(dormerSolid!, brush, SUBTRACTION) as Brush
+      dormerSolid!.geometry.dispose()
+      brush.geometry.dispose()
+      dormerSolid = result
     }
-    const skirtCutIndexCount = skirtCutGeo.getIndex()!.count
-    skirtCutGeo.clearGroups()
-    skirtCutGeo.addGroup(0, skirtCutIndexCount, 0)
-    computeGeometryBoundsTree(skirtCutGeo)
-    const skirtCutBrush = new Brush(skirtCutGeo, dummyMats)
-    skirtCutBrush.updateMatrixWorld()
-    const withSkirtWindow = csgEvaluator.evaluate(dormerSolid, skirtCutBrush, SUBTRACTION) as Brush
-    dormerSolid.geometry.dispose()
-    skirtCutBrush.geometry.dispose()
-    dormerSolid = withSkirtWindow
+
+    if (exposed.front) cutFace(+1)
+    if (exposed.back) cutFace(-1)
 
     resultGeo = csgGeometry(dormerSolid)
     const resultMaterials = csgMaterials(dormerSolid)
