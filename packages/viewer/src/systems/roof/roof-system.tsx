@@ -13,32 +13,10 @@ import {
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { ADDITION, Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg'
-import { computeBoundsTree } from 'three-mesh-bvh'
+import { ADDITION, Brush, SUBTRACTION } from 'three-bvh-csg'
+import { csgEvaluator, csgGeometry, csgMaterials, computeGeometryBoundsTree, prepareBrushForCSG } from '../../lib/csg-utils'
 
-export function csgGeometry(brush: Brush): THREE.BufferGeometry {
-  return brush.geometry as unknown as THREE.BufferGeometry
-}
-
-function csgMaterials(brush: Brush): THREE.Material[] {
-  const mat = (brush as any).material
-  return Array.isArray(mat) ? mat : [mat]
-}
-
-export const csgEvaluator = new Evaluator()
-csgEvaluator.useGroups = true
-;(csgEvaluator as any).consolidateGroups = false // shared dummyMats across brushes causes consolidation to misalign groupIndices vs groupOrder indices → crash
-csgEvaluator.attributes = ['position', 'normal', 'uv']
-
-function computeGeometryBoundsTree(geometry: THREE.BufferGeometry) {
-  ;(geometry as any).computeBoundsTree = computeBoundsTree
-  ;(geometry as any).computeBoundsTree({ maxLeafSize: 10 })
-}
-
-export function prepareBrushForCSG(brush: Brush) {
-  computeGeometryBoundsTree(brush.geometry)
-  brush.updateMatrixWorld()
-}
+export { csgEvaluator, csgGeometry, prepareBrushForCSG }
 
 // Pooled objects to avoid per-frame allocation in updateMergedRoofGeometry
 const _matrix = new THREE.Matrix4()

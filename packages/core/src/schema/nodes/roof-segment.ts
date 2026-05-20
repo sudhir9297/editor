@@ -15,7 +15,6 @@ export const RoofSegmentNode = BaseNode.extend({
   type: nodeType('roof-segment'),
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
-  // Hosted roof elements (chimneys, skylights, solar panels, dormers, etc.)
   children: z
     .array(
       z.union([
