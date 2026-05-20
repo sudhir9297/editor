@@ -1,7 +1,9 @@
 import {
   type AnyNodeId,
+  type BoxVentNode,
   type BuildingNode,
   type CeilingNode,
+  type RidgeVentNode,
   type SlabNode,
   useScene,
 } from '@pascal-app/core'
@@ -25,6 +27,7 @@ import { SlabHoleEditor } from './slab/slab-hole-editor'
 import { SlabTool } from './slab/slab-tool'
 import { SpawnTool } from './spawn/spawn-tool'
 import { StairTool } from './stair/stair-tool'
+import { FloatingVentActions } from './vent/floating-vent-actions'
 import { CurveWallTool } from './wall/curve-wall-tool'
 import { MoveWallEndpointTool } from './wall/move-wall-endpoint-tool'
 import { WallTool } from './wall/wall-tool'
@@ -87,6 +90,17 @@ export const ToolManager: React.FC = () => {
   const selectedCeilingId = selectedIds.find((id) => nodes[id as AnyNodeId]?.type === 'ceiling') as
     | CeilingNode['id']
     | undefined
+
+  // Single-vent selection — used for floating action toolbar
+  const selectedVent =
+    selectedIds.length === 1
+      ? (() => {
+          const n = nodes[selectedIds[0] as AnyNodeId]
+          return n && (n.type === 'ridge-vent' || n.type === 'box-vent')
+            ? (n as RidgeVentNode | BoxVentNode)
+            : undefined
+        })()
+      : undefined
 
   // Show site boundary editor when in site phase (toggle controls entry/exit)
   const showSiteBoundaryEditor = phase === 'site'
@@ -174,6 +188,7 @@ export const ToolManager: React.FC = () => {
             onSpawnMoved={handlePlacedNodeSelected}
           />
         )}
+        {!movingNode && selectedVent && <FloatingVentActions node={selectedVent} />}
         {!movingNode && showBuildTool && tool === 'spawn' && (
           <SpawnTool currentLevelId={activeLevelId ?? null} onPlaced={handlePlacedNodeSelected} />
         )}

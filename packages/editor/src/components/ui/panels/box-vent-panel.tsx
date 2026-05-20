@@ -3,7 +3,7 @@
 import {
   type AnyNode,
   type AnyNodeId,
-  type RidgeVentNode,
+  type BoxVentNode,
   type RoofSegmentNode,
   useLiveNodeOverrides,
   useScene,
@@ -19,7 +19,7 @@ import { SegmentedControl } from '../controls/segmented-control'
 import { SliderControl } from '../controls/slider-control'
 import { PanelWrapper } from './panel-wrapper'
 
-export function RidgeVentPanel() {
+export function BoxVentPanel() {
   const selectedId = useViewer((s) => s.selection.selectedIds[0])
   const setSelection = useViewer((s) => s.setSelection)
   const updateNode = useScene((s) => s.updateNode)
@@ -27,15 +27,15 @@ export function RidgeVentPanel() {
   const setMovingNode = useEditor((s) => s.setMovingNode)
 
   const storeNode = useScene((s) =>
-    selectedId ? (s.nodes[selectedId as AnyNode['id']] as RidgeVentNode | undefined) : undefined,
+    selectedId ? (s.nodes[selectedId as AnyNode['id']] as BoxVentNode | undefined) : undefined,
   )
   const overrides = useLiveNodeOverrides((s) =>
-    selectedId ? (s.get(selectedId as AnyNodeId) as Partial<RidgeVentNode> | undefined) : undefined,
+    selectedId ? (s.get(selectedId as AnyNodeId) as Partial<BoxVentNode> | undefined) : undefined,
   )
-  const node = storeNode && overrides ? ({ ...storeNode, ...overrides } as RidgeVentNode) : storeNode
+  const node = storeNode && overrides ? ({ ...storeNode, ...overrides } as BoxVentNode) : storeNode
 
   const handleUpdate = useCallback(
-    (updates: Partial<RidgeVentNode>) => {
+    (updates: Partial<BoxVentNode>) => {
       if (!selectedId) return
       updateNode(selectedId as AnyNode['id'], updates)
     },
@@ -43,7 +43,7 @@ export function RidgeVentPanel() {
   )
 
   const previewProp = useCallback(
-    (updates: Partial<RidgeVentNode>) => {
+    (updates: Partial<BoxVentNode>) => {
       if (!selectedId) return
       useLiveNodeOverrides.getState().set(selectedId as AnyNodeId, updates)
     },
@@ -51,7 +51,7 @@ export function RidgeVentPanel() {
   )
 
   const commitProp = useCallback(
-    (updates: Partial<RidgeVentNode>) => {
+    (updates: Partial<BoxVentNode>) => {
       if (!selectedId) return
       updateNode(selectedId as AnyNode['id'], updates)
       useLiveNodeOverrides.getState().clear(selectedId as AnyNodeId)
@@ -98,31 +98,20 @@ export function RidgeVentPanel() {
     }
   }, [selectedId, node, deleteNode, setSelection])
 
-  if (!(node && node.type === 'ridge-vent' && selectedId)) return null
+  if (!(node && node.type === 'box-vent' && selectedId)) return null
 
   return (
     <PanelWrapper
       onBack={handleBack}
       onClose={handleClose}
-      title={node.name || 'Ridge Vent'}
+      title={node.name || 'Box Vent'}
       width={280}
     >
       <PanelSection title="Dimensions">
         <SliderControl
-          label="Length"
-          max={12}
-          min={0.3}
-          onChange={(v) => previewProp({ length: v })}
-          onCommit={(v) => commitProp({ length: v })}
-          precision={2}
-          step={0.05}
-          unit="m"
-          value={node.length}
-        />
-        <SliderControl
           label="Width"
-          max={1.0}
-          min={0.1}
+          max={0.8}
+          min={0.15}
           onChange={(v) => previewProp({ width: v })}
           onCommit={(v) => commitProp({ width: v })}
           precision={2}
@@ -131,9 +120,20 @@ export function RidgeVentPanel() {
           value={node.width}
         />
         <SliderControl
+          label="Depth"
+          max={0.8}
+          min={0.15}
+          onChange={(v) => previewProp({ depth: v })}
+          onCommit={(v) => commitProp({ depth: v })}
+          precision={2}
+          step={0.01}
+          unit="m"
+          value={node.depth}
+        />
+        <SliderControl
           label="Height"
-          max={0.3}
-          min={0.02}
+          max={0.4}
+          min={0.05}
           onChange={(v) => previewProp({ height: v })}
           onCommit={(v) => commitProp({ height: v })}
           precision={2}
@@ -141,15 +141,26 @@ export function RidgeVentPanel() {
           unit="m"
           value={node.height}
         />
+        <SliderControl
+          label="Hood Overhang"
+          max={0.12}
+          min={0}
+          onChange={(v) => previewProp({ hoodOverhang: v })}
+          onCommit={(v) => commitProp({ hoodOverhang: v })}
+          precision={3}
+          step={0.005}
+          unit="m"
+          value={node.hoodOverhang}
+        />
       </PanelSection>
 
       <PanelSection title="Style">
         <SegmentedControl
-          onChange={(v) => handleUpdate({ style: v as RidgeVentNode['style'] })}
+          onChange={(v) => handleUpdate({ style: v as BoxVentNode['style'] })}
           options={[
             { label: 'Standard', value: 'standard' },
-            { label: 'Shingled', value: 'shingled' },
-            { label: 'Metal', value: 'metal' },
+            { label: 'Low Profile', value: 'low-profile' },
+            { label: 'Dome', value: 'dome' },
           ]}
           value={node.style}
         />

@@ -3,6 +3,7 @@
 import type { AssetInput } from '@pascal-app/core'
 import {
   type AnyNodeId,
+  type BoxVentNode,
   type BuildingNode,
   type CeilingNode,
   type ChimneyNode,
@@ -163,6 +164,7 @@ type EditorState = {
     | SolarPanelNode
     | DormerNode
     | RidgeVentNode
+    | BoxVentNode
     | null
   setMovingNode: (
     node:
@@ -186,6 +188,7 @@ type EditorState = {
       | SolarPanelNode
       | DormerNode
       | RidgeVentNode
+      | BoxVentNode
       | null,
   ) => void
   movingWallEndpoint: MovingWallEndpoint | null
@@ -601,6 +604,7 @@ const useEditor = create<EditorState>()(
         | SolarPanelNode
         | DormerNode
         | RidgeVentNode
+        | BoxVentNode
             | null,
       setMovingNode: (node) => set({ movingNode: node }),
       movingWallEndpoint: null,

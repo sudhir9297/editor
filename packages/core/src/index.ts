@@ -8,6 +8,7 @@ export type {
   DormerEvent,
   DoorEvent,
   RidgeVentEvent,
+  BoxVentEvent,
   ElevatorEvent,
   EventSuffix,
   FenceEvent,

@@ -68,7 +68,8 @@ export const RoofSystem = () => {
         node.type === 'skylight' ||
         node.type === 'solar-panel' ||
         node.type === 'dormer' ||
-        node.type === 'ridge-vent'
+        node.type === 'ridge-vent' ||
+        node.type === 'box-vent'
       ) {
         const seg = (node as { roofSegmentId?: string }).roofSegmentId
           ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as

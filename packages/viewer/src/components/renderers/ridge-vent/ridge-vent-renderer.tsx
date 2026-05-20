@@ -14,10 +14,24 @@ import { useNodeEvents } from '../../../hooks/use-node-events'
 import { createMaterial, createMaterialFromPresetRef } from '../../../lib/materials'
 import { buildRidgeVentGeometry } from '../../../systems/ridge-vent/ridge-vent-geometry'
 
-const defaultMaterial = new MeshStandardNodeMaterial({
+const standardMaterial = new MeshStandardNodeMaterial({
   color: 0xff_ff_ff,
   roughness: 0.85,
   metalness: 0.1,
+  side: THREE.DoubleSide,
+})
+
+const shingledMaterial = new MeshStandardNodeMaterial({
+  color: 0x55_55_55,
+  roughness: 0.92,
+  metalness: 0.0,
+  side: THREE.DoubleSide,
+})
+
+const metalMaterial = new MeshStandardNodeMaterial({
+  color: 0xa8_a8_a8,
+  roughness: 0.35,
+  metalness: 0.75,
   side: THREE.DoubleSide,
 })
 
@@ -61,10 +75,6 @@ export const RidgeVentRenderer = ({ node: storeNode }: { node: RidgeVentNode }) 
     node.endCaps,
   ])
 
-  const peakY = segment
-    ? segment.wallHeight + (segment.roofType === 'flat' ? 0 : segment.roofHeight)
-    : 0
-
   useEffect(() => {
     return () => {
       geometry?.dispose()
@@ -73,7 +83,10 @@ export const RidgeVentRenderer = ({ node: storeNode }: { node: RidgeVentNode }) 
 
   const preset = createMaterialFromPresetRef(node.materialPreset)
   const explicit = node.material ? createMaterial(node.material) : null
-  const material = explicit ?? preset ?? defaultMaterial
+  const styleFallback = node.style === 'metal' ? metalMaterial
+    : node.style === 'shingled' ? shingledMaterial
+    : standardMaterial
+  const material = explicit ?? preset ?? styleFallback
 
   if (!segment || !geometry) return null
 
@@ -85,7 +98,7 @@ export const RidgeVentRenderer = ({ node: storeNode }: { node: RidgeVentNode }) 
       visible={node.visible}
       {...(isTransient ? {} : handlers)}
     >
-      <group position={[node.position[0] ?? 0, peakY, node.position[2] ?? 0]} rotation-y={node.rotation ?? 0}>
+      <group position={[node.position[0] ?? 0, node.position[1] ?? 0, node.position[2] ?? 0]} rotation-y={node.rotation ?? 0}>
         <mesh
           castShadow
           geometry={geometry}

@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "editor",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["dotenv", "-e", ".env.local", "--", "next", "dev", "--port", "3002"],
+      "cwd": "apps/editor",
       "port": 3002,
       "autoPort": true
     }

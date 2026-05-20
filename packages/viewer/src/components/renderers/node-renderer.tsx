@@ -13,6 +13,7 @@ import { FenceRenderer } from './fence/fence-renderer'
 import { GuideRenderer } from './guide/guide-renderer'
 import { ItemRenderer } from './item/item-renderer'
 import { LevelRenderer } from './level/level-renderer'
+import { BoxVentRenderer } from './box-vent/box-vent-renderer'
 import { RidgeVentRenderer } from './ridge-vent/ridge-vent-renderer'
 import { RoofRenderer } from './roof/roof-renderer'
 import { RoofSegmentRenderer } from './roof-segment/roof-segment-renderer'
@@ -55,6 +56,7 @@ export const NodeRenderer = ({ nodeId }: { nodeId: AnyNode['id'] }) => {
       {node.type === 'solar-panel' && <SolarPanelRenderer node={node} />}
       {node.type === 'dormer' && <DormerRenderer node={node} />}
       {node.type === 'ridge-vent' && <RidgeVentRenderer node={node} />}
+      {node.type === 'box-vent' && <BoxVentRenderer node={node} />}
       {node.type === 'stair' && <StairRenderer node={node} />}
       {node.type === 'stair-segment' && <StairSegmentRenderer node={node} />}
       {node.type === 'scan' && <ScanRenderer node={node} />}

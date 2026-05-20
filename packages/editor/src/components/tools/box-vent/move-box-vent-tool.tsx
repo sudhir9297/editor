@@ -2,7 +2,7 @@ import '../../../three-types'
 
 import {
   type AnyNodeId,
-  type RidgeVentNode,
+  type BoxVentNode,
   emitter,
   type RoofEvent,
   type RoofNode,
@@ -10,7 +10,7 @@ import {
   sceneRegistry,
   useScene,
 } from '@pascal-app/core'
-import { useViewer } from '@pascal-app/viewer'
+import { buildBoxVentGeometry, useViewer } from '@pascal-app/viewer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { markToolCancelConsumed } from '../../../hooks/use-keyboard'
@@ -41,20 +41,40 @@ function resolveSegmentFromWorldPoint(
 }
 
 const previewMaterial = new THREE.MeshStandardMaterial({
-  color: 0x88_88_88,
+  color: 0xff_ff_ff,
+  emissive: 0xff_ff_ff,
+  emissiveIntensity: 0.12,
+  roughness: 0.85,
+  metalness: 0.05,
   transparent: true,
-  opacity: 0.6,
+  opacity: 0.55,
   depthWrite: false,
   side: THREE.DoubleSide,
 })
 
-export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
+const previewEdgeMaterial = new THREE.LineBasicMaterial({
+  color: 0x6c_a3_ff,
+  transparent: true,
+  opacity: 0.9,
+  depthTest: false,
+})
+
+const previewFootprintMaterial = new THREE.LineBasicMaterial({
+  color: 0x6c_a3_ff,
+  transparent: true,
+  opacity: 0.7,
+  depthTest: false,
+})
+
+export function MoveBoxVentTool({ node }: { node: BoxVentNode }) {
   const exitMoveMode = useCallback(() => {
     useEditor.getState().setMovingNode(null)
   }, [])
 
   const previewRef = useRef<THREE.Group>(null!)
   const [previewPos, setPreviewPos] = useState<[number, number, number]>([0, 0, 0])
+  const [previewTilt, setPreviewTilt] = useState(0)
+  const [previewSegYaw, setPreviewSegYaw] = useState(0)
 
   const segment = useScene((s) =>
     node.roofSegmentId
@@ -62,35 +82,39 @@ export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
       : undefined,
   )
 
-  const previewGeo = useMemo(() => {
-    if (!segment) return null
-    const halfLen = node.length / 2
-    const halfW = node.width / 2
-    const h = node.height
-    const segs = 6
+  const previewGeo = useMemo(() => buildBoxVentGeometry(node), [
+    node.width,
+    node.depth,
+    node.height,
+    node.hoodOverhang,
+    node.style,
+  ])
 
-    // Curved cap preview matching the actual ridge vent profile, bottom at y=0
-    const verts: number[] = []
-    for (let i = 0; i < segs; i++) {
-      const f0 = i / segs
-      const f1 = (i + 1) / segs
-      const z0 = -halfW + f0 * 2 * halfW
-      const z1 = -halfW + f1 * 2 * halfW
-      const y0 = h * Math.sin(Math.PI * f0)
-      const y1 = h * Math.sin(Math.PI * f1)
+  const previewEdgesGeo = useMemo(() => {
+    if (!previewGeo) return null
+    return new THREE.EdgesGeometry(previewGeo, 25)
+  }, [previewGeo])
 
-      // Two triangles per quad strip segment
-      verts.push(
-        -halfLen, y0, z0,  halfLen, y0, z0,  halfLen, y1, z1,
-        -halfLen, y0, z0,  halfLen, y1, z1, -halfLen, y1, z1,
-      )
+  const previewFootprintGeo = useMemo(() => {
+    const hw = node.width / 2
+    const hd = node.depth / 2
+    // 4 edges as line-segment pairs (a→b, b→c, c→d, d→a)
+    const pts = [
+      new THREE.Vector3(-hw, 0, -hd), new THREE.Vector3(hw, 0, -hd),
+      new THREE.Vector3(hw, 0, -hd),  new THREE.Vector3(hw, 0, hd),
+      new THREE.Vector3(hw, 0, hd),   new THREE.Vector3(-hw, 0, hd),
+      new THREE.Vector3(-hw, 0, hd),  new THREE.Vector3(-hw, 0, -hd),
+    ]
+    return new THREE.BufferGeometry().setFromPoints(pts)
+  }, [node.width, node.depth])
+
+  useEffect(() => {
+    return () => {
+      previewGeo?.dispose()
+      previewEdgesGeo?.dispose()
+      previewFootprintGeo?.dispose()
     }
-
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3))
-    geo.computeVertexNormals()
-    return geo
-  }, [segment, node.length, node.width, node.height])
+  }, [previewGeo, previewEdgesGeo, previewFootprintGeo])
 
   useEffect(() => {
     useScene.temporal.getState().pause()
@@ -128,6 +152,19 @@ export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
       return [wx, wy, wz]
     }
 
+    const computeOrientation = (roofNode: RoofNode, wx: number, wy: number, wz: number) => {
+      const st = useScene.getState()
+      const hit = resolveSegmentFromWorldPoint(roofNode, wx, wy, wz, st)
+      if (!hit) return { tilt: 0, segYaw: 0 }
+      const seg = hit.segment
+      const slopeAngle =
+        seg.roofType === 'flat' ? 0 : Math.atan2(seg.roofHeight, seg.depth / 2)
+      const tilt =
+        hit.localZ === 0 ? 0 : hit.localZ > 0 ? slopeAngle : -slopeAngle
+      const segYaw = (roofNode.rotation ?? 0) + (seg.rotation ?? 0)
+      return { tilt, segYaw }
+    }
+
     let lastSnapX = 0
     let lastSnapZ = 0
 
@@ -144,12 +181,21 @@ export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
         lastSnapZ = sz
       }
 
+      const orient = computeOrientation(event.node as RoofNode, wx, wy, wz)
+      setPreviewTilt(orient.tilt)
+      setPreviewSegYaw(orient.segYaw)
       setPreviewPos(worldToBuildingLocal(wx, wy, wz))
       event.stopPropagation()
     }
 
     const onRoofEnter = (event: RoofEvent) => {
-      setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
+      const wx = event.position[0]
+      const wy = event.position[1]
+      const wz = event.position[2]
+      const orient = computeOrientation(event.node as RoofNode, wx, wy, wz)
+      setPreviewTilt(orient.tilt)
+      setPreviewSegYaw(orient.segYaw)
+      setPreviewPos(worldToBuildingLocal(wx, wy, wz))
       event.stopPropagation()
     }
 
@@ -178,7 +224,6 @@ export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
         }
       }
 
-      // Restore original state for clean undo baseline.
       st.updateNode(node.id as AnyNodeId, {
         position: original.position,
         rotation: original.rotation,
@@ -261,12 +306,34 @@ export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
   if (!previewGeo) return null
 
   return (
-    <group position={previewPos} ref={previewRef} rotation-y={node.rotation ?? 0}>
-      <mesh
-        geometry={previewGeo}
-        layers={EDITOR_LAYER}
-        material={previewMaterial}
-      />
+    <group position={previewPos} ref={previewRef}>
+      <group rotation-y={previewSegYaw}>
+        <group rotation-x={previewTilt}>
+          {previewFootprintGeo && (
+            <lineSegments
+              geometry={previewFootprintGeo}
+              layers={EDITOR_LAYER}
+              material={previewFootprintMaterial}
+              renderOrder={999}
+            />
+          )}
+          <group rotation-y={node.rotation ?? 0}>
+            <mesh
+              geometry={previewGeo}
+              layers={EDITOR_LAYER}
+              material={previewMaterial}
+            />
+            {previewEdgesGeo && (
+              <lineSegments
+                geometry={previewEdgesGeo}
+                layers={EDITOR_LAYER}
+                material={previewEdgeMaterial}
+                renderOrder={1000}
+              />
+            )}
+          </group>
+        </group>
+      </group>
     </group>
   )
 }

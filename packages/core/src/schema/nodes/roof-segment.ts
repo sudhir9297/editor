@@ -2,6 +2,7 @@ import dedent from 'dedent'
 import { z } from 'zod'
 import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
+import { BoxVentNode } from './box-vent'
 import { ChimneyNode } from './chimney'
 import { DormerNode } from './dormer'
 import { RidgeVentNode } from './ridge-vent'
@@ -24,6 +25,7 @@ export const RoofSegmentNode = BaseNode.extend({
         SolarPanelNode.shape.id,
         DormerNode.shape.id,
         RidgeVentNode.shape.id,
+        BoxVentNode.shape.id,
       ]),
     )
     .default([]),

@@ -90,6 +90,7 @@ export {
 } from './nodes/skylight'
 export { SlabNode } from './nodes/slab'
 export { RidgeVentNode } from './nodes/ridge-vent'
+export { BoxVentNode } from './nodes/box-vent'
 export { SolarPanelMaterialRole, SolarPanelNode } from './nodes/solar-panel'
 export { SpawnNode } from './nodes/spawn'
 export type { StairSurfaceMaterialRole, StairSurfaceMaterialSpec } from './nodes/stair'

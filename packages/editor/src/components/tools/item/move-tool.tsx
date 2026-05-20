@@ -1,5 +1,6 @@
 import type {
   AnyNodeId,
+  BoxVentNode,
   BuildingNode,
   CeilingNode,
   ChimneyNode,
@@ -28,6 +29,7 @@ import { MoveBuildingContent } from '../building/move-building-tool'
 import { MoveCeilingTool } from '../ceiling/move-ceiling-tool'
 import { MoveChimneyTool } from '../chimney/move-chimney-tool'
 import { MoveDormerTool } from '../dormer/move-dormer-tool'
+import { MoveBoxVentTool } from '../box-vent/move-box-vent-tool'
 import { MoveRidgeVentTool } from '../ridge-vent/move-ridge-vent-tool'
 import { MoveSkylightTool } from '../skylight/move-skylight-tool'
 import { MoveSolarPanelTool } from '../solar-panel/move-solar-panel-tool'
@@ -132,5 +134,6 @@ export const MoveTool: React.FC<{
   if (movingNode.type === 'solar-panel') return <MoveSolarPanelTool node={movingNode as SolarPanelNode} />
   if (movingNode.type === 'dormer') return <MoveDormerTool node={movingNode as DormerNode} />
   if (movingNode.type === 'ridge-vent') return <MoveRidgeVentTool node={movingNode as RidgeVentNode} />
+  if (movingNode.type === 'box-vent') return <MoveBoxVentTool node={movingNode as BoxVentNode} />
   return <MoveItemContent movingNode={movingNode as ItemNode} />
 }

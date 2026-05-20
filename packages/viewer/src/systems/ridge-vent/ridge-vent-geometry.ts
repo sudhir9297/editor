@@ -2,10 +2,10 @@ import type { RidgeVentNode } from '@pascal-app/core'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
-// Number of arc segments for the curved cap profile
 const ARC_SEGMENTS = 8
-// Shell wall thickness as fraction of height
 const SHELL_THICKNESS = 0.25
+const SHINGLED_PEAK_SEGS = 3
+const SHINGLED_TAB_SIZE = 0.3
 
 export function buildRidgeVentGeometry(
   node: RidgeVentNode,
@@ -18,15 +18,21 @@ export function buildRidgeVentGeometry(
 
   if (node.style === 'metal') {
     geometries.push(buildMetalProfile(halfLen, halfW, h))
+  } else if (node.style === 'shingled') {
+    geometries.push(buildShingledProfile(halfLen, halfW, h))
   } else {
     geometries.push(buildCurvedCapProfile(halfLen, halfW, h))
   }
 
   if (node.endCaps) {
-    const capGeo =
-      node.style === 'metal'
-        ? buildMetalEndCaps(halfLen, halfW, h)
-        : buildCurvedEndCaps(halfLen, halfW, h)
+    let capGeo: THREE.BufferGeometry | null
+    if (node.style === 'metal') {
+      capGeo = buildMetalEndCaps(halfLen, halfW, h)
+    } else if (node.style === 'shingled') {
+      capGeo = buildShingledEndCaps(halfLen, halfW, h)
+    } else {
+      capGeo = buildCurvedEndCaps(halfLen, halfW, h)
+    }
     if (capGeo) geometries.push(capGeo)
   }
 
@@ -234,8 +240,183 @@ function buildCurvedEndCaps(
 }
 
 // ---------------------------------------------------------------------------
-// Metal: angular bent-metal cap with thickness — sharper ridgeline, lip edges
+// Shingled: angular slopes with rounded peak ridge and shingle tab divisions
+// Cross-section is two flat slopes meeting at a small rounded peak, with
+// visible tab divider ridges along the length.
 // ---------------------------------------------------------------------------
+
+function buildShingledProfile(
+  halfLen: number,
+  halfW: number,
+  h: number,
+): THREE.BufferGeometry {
+  const positions: number[] = []
+  const normals: number[] = []
+  const uvs: number[] = []
+  const t = h * SHELL_THICKNESS
+
+  const peakR = halfW * 0.1
+  const slopeY = h * (halfW - peakR) / halfW
+
+  const outerPts: [number, number][] = [[-halfW, 0]]
+  for (let i = 0; i <= SHINGLED_PEAK_SEGS; i++) {
+    const frac = i / SHINGLED_PEAK_SEGS
+    const angle = Math.PI * (1 - frac)
+    outerPts.push([
+      peakR * Math.cos(angle),
+      slopeY + (h - slopeY) * Math.sin(angle),
+    ])
+  }
+  outerPts.push([halfW, 0])
+
+  const innerPts = offsetProfileInward(outerPts, t)
+
+  for (let i = 0; i < outerPts.length - 1; i++) {
+    const [oz0, oy0] = outerPts[i]!
+    const [oz1, oy1] = outerPts[i + 1]!
+    const [iz0, iy0] = innerPts[i]!
+    const [iz1, iy1] = innerPts[i + 1]!
+
+    const dz = oz1 - oz0
+    const dy = oy1 - oy0
+    const fLen = Math.sqrt(dz * dz + dy * dy) || 1
+    const fnz = -dy / fLen
+    const fny = dz / fLen
+
+    pushQuad(positions, normals, uvs,
+      [-halfLen, oy0, oz0], [halfLen, oy0, oz0],
+      [halfLen, oy1, oz1], [-halfLen, oy1, oz1],
+      [0, fny, fnz])
+
+    pushQuad(positions, normals, uvs,
+      [-halfLen, iy1, iz1], [halfLen, iy1, iz1],
+      [halfLen, iy0, iz0], [-halfLen, iy0, iz0],
+      [0, -fny, -fnz])
+  }
+
+  {
+    const [oz, oy] = outerPts[0]!
+    const [iz, iy] = innerPts[0]!
+    pushQuad(positions, normals, uvs,
+      [-halfLen, iy, iz], [halfLen, iy, iz],
+      [halfLen, oy, oz], [-halfLen, oy, oz],
+      [0, -1, 0])
+  }
+  {
+    const last = outerPts.length - 1
+    const [oz, oy] = outerPts[last]!
+    const [iz, iy] = innerPts[last]!
+    pushQuad(positions, normals, uvs,
+      [-halfLen, oy, oz], [halfLen, oy, oz],
+      [halfLen, iy, iz], [-halfLen, iy, iz],
+      [0, -1, 0])
+  }
+
+  const totalLen = halfLen * 2
+  const numTabs = Math.max(2, Math.round(totalLen / SHINGLED_TAB_SIZE))
+  const tabLen = totalLen / numTabs
+  const ridgeH = h * 0.06
+  const ridgeD = 0.006
+
+  for (let tab = 1; tab < numTabs; tab++) {
+    const x = -halfLen + tab * tabLen
+
+    for (let i = 0; i < outerPts.length - 1; i++) {
+      const [oz0, oy0] = outerPts[i]!
+      const [oz1, oy1] = outerPts[i + 1]!
+
+      const dz = oz1 - oz0
+      const dy = oy1 - oy0
+      const fLen = Math.sqrt(dz * dz + dy * dy) || 1
+      const fnz = -dy / fLen
+      const fny = dz / fLen
+
+      const r0y = oy0 + fny * ridgeH
+      const r0z = oz0 + fnz * ridgeH
+      const r1y = oy1 + fny * ridgeH
+      const r1z = oz1 + fnz * ridgeH
+
+      pushQuad(positions, normals, uvs,
+        [x, r0y, r0z], [x, r1y, r1z],
+        [x, oy1, oz1], [x, oy0, oz0],
+        [1, 0, 0])
+
+      pushQuad(positions, normals, uvs,
+        [x, r0y, r0z], [x, r1y, r1z],
+        [x - ridgeD, oy1, oz1], [x - ridgeD, oy0, oz0],
+        [0, fny, fnz])
+    }
+  }
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  return geo
+}
+
+function buildShingledEndCaps(
+  halfLen: number,
+  halfW: number,
+  h: number,
+): THREE.BufferGeometry | null {
+  const positions: number[] = []
+  const normals: number[] = []
+  const uvs: number[] = []
+  const t = h * SHELL_THICKNESS
+
+  const peakR = halfW * 0.1
+  const slopeY = h * (halfW - peakR) / halfW
+
+  const outerPts: [number, number][] = [[-halfW, 0]]
+  for (let i = 0; i <= SHINGLED_PEAK_SEGS; i++) {
+    const frac = i / SHINGLED_PEAK_SEGS
+    const angle = Math.PI * (1 - frac)
+    outerPts.push([
+      peakR * Math.cos(angle),
+      slopeY + (h - slopeY) * Math.sin(angle),
+    ])
+  }
+  outerPts.push([halfW, 0])
+
+  const innerPts = offsetProfileInward(outerPts, t)
+
+  for (const sign of [-1, 1]) {
+    const x = sign * halfLen
+    const nx = sign
+
+    for (let i = 0; i < outerPts.length - 1; i++) {
+      const [oz0, oy0] = outerPts[i]!
+      const [oz1, oy1] = outerPts[i + 1]!
+      const [iz0, iy0] = innerPts[i]!
+      const [iz1, iy1] = innerPts[i + 1]!
+
+      const a: [number, number, number] = [x, oy0, oz0]
+      const b: [number, number, number] = [x, oy1, oz1]
+      const c: [number, number, number] = [x, iy1, iz1]
+      const d: [number, number, number] = [x, iy0, iz0]
+
+      if (sign > 0) {
+        pushQuadVec(positions, normals, uvs, a, b, c, d, [nx, 0, 0])
+      } else {
+        pushQuadVec(positions, normals, uvs, d, c, b, a, [nx, 0, 0])
+      }
+    }
+  }
+
+  if (positions.length === 0) return null
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  return geo
+}
+
+// ---------------------------------------------------------------------------
+// Metal: angular bent-metal cap with raised center bead, pronounced drip-edge
+// lips, and proper per-face normals for correct lighting
+// ---------------------------------------------------------------------------
+
 function buildMetalProfile(
   halfLen: number,
   halfW: number,
@@ -246,60 +427,66 @@ function buildMetalProfile(
   const uvs: number[] = []
 
   const t = h * SHELL_THICKNESS
-  const lipH = h * 0.25
-  const lipW = halfW * 0.12
+  const lipH = h * 0.3
+  const lipW = halfW * 0.15
+  const beadW = halfW * 0.05
+  const beadH = h * 0.12
 
-  const oL:  [number, number] = [-halfW,            0]
-  const oLL: [number, number] = [-halfW + lipW,     lipH]
-  const oP:  [number, number] = [0,                 h]
-  const oRL: [number, number] = [halfW - lipW,      lipH]
-  const oR:  [number, number] = [halfW,             0]
+  const outer: [number, number][] = [
+    [-halfW, 0],
+    [-halfW + lipW, lipH],
+    [-beadW, h],
+    [0, h + beadH],
+    [beadW, h],
+    [halfW - lipW, lipH],
+    [halfW, 0],
+  ]
 
-  const iL:  [number, number] = [-halfW,            t]
-  const iLL: [number, number] = [-halfW + lipW,     lipH + t]
-  const iP:  [number, number] = [0,                 h - t]
-  const iRL: [number, number] = [halfW - lipW,      lipH + t]
-  const iR:  [number, number] = [halfW,             t]
+  const inner: [number, number][] = [
+    [-halfW, t],
+    [-halfW + lipW, lipH + t],
+    [-beadW, h - t],
+    [0, h - t],
+    [beadW, h - t],
+    [halfW - lipW, lipH + t],
+    [halfW, t],
+  ]
 
-  // Helper to extrude a quad along X
-  const extrudeQuad = (
-    z0: number, y0: number, z1: number, y1: number,
-    iz0: number, iy0: number, iz1: number, iy1: number,
-    outerN: number[], innerN: number[],
-  ) => {
-    // Outer
-    pushQuad(positions, normals, uvs,
-      [-halfLen, y0, z0], [halfLen, y0, z0], [halfLen, y1, z1], [-halfLen, y1, z1], outerN)
-    // Inner
-    pushQuad(positions, normals, uvs,
-      [-halfLen, iy1, iz1], [halfLen, iy1, iz1], [halfLen, iy0, iz0], [-halfLen, iy0, iz0], innerN)
+  const segNormal = (z0: number, y0: number, z1: number, y1: number): number[] => {
+    const dz = z1 - z0
+    const dy = y1 - y0
+    const len = Math.sqrt(dz * dz + dy * dy) || 1
+    return [0, dz / len, -dy / len]
   }
 
-  // Left eave → left lip
-  extrudeQuad(oL[0], oL[1], oLL[0], oLL[1], iL[0], iL[1], iLL[0], iLL[1],
-    [0, 0, -1], [0, 0, 1])
+  for (let i = 0; i < outer.length - 1; i++) {
+    const [oz0, oy0] = outer[i]!
+    const [oz1, oy1] = outer[i + 1]!
+    const [iz0, iy0] = inner[i]!
+    const [iz1, iy1] = inner[i + 1]!
 
-  // Left lip → peak
-  extrudeQuad(oLL[0], oLL[1], oP[0], oP[1], iLL[0], iLL[1], iP[0], iP[1],
-    [0, 0, -1], [0, 0, 1])
+    const outerN = segNormal(oz0, oy0, oz1, oy1)
+    const innerN = segNormal(iz0, iy0, iz1, iy1).map(v => -v)
 
-  // Peak → right lip
-  extrudeQuad(oP[0], oP[1], oRL[0], oRL[1], iP[0], iP[1], iRL[0], iRL[1],
-    [0, 0, 1], [0, 0, -1])
+    pushQuad(positions, normals, uvs,
+      [-halfLen, oy0, oz0], [halfLen, oy0, oz0],
+      [halfLen, oy1, oz1], [-halfLen, oy1, oz1],
+      outerN)
 
-  // Right lip → right eave
-  extrudeQuad(oRL[0], oRL[1], oR[0], oR[1], iRL[0], iRL[1], iR[0], iR[1],
-    [0, 0, 1], [0, 0, -1])
+    pushQuad(positions, normals, uvs,
+      [-halfLen, iy1, iz1], [halfLen, iy1, iz1],
+      [halfLen, iy0, iz0], [-halfLen, iy0, iz0],
+      innerN)
+  }
 
-  // Bottom edges: left eave
   pushQuad(positions, normals, uvs,
-    [-halfLen, iL[1], iL[0]], [halfLen, iL[1], iL[0]],
-    [halfLen, oL[1], oL[0]], [-halfLen, oL[1], oL[0]],
+    [-halfLen, inner[0]![1], inner[0]![0]], [halfLen, inner[0]![1], inner[0]![0]],
+    [halfLen, outer[0]![1], outer[0]![0]], [-halfLen, outer[0]![1], outer[0]![0]],
     [0, -1, 0])
-  // Bottom edges: right eave
+  const lastIdx = outer.length - 1
   pushQuad(positions, normals, uvs,
-    [-halfLen, oR[1], oR[0]], [halfLen, oR[1], oR[0]],
-    [halfLen, iR[1], iR[0]], [-halfLen, iR[1], iR[0]],
+    [-halfLen, outer[lastIdx]![1], outer[lastIdx]![0]], [halfLen, outer[lastIdx]![1], outer[lastIdx]![0]],
+    [halfLen, inner[lastIdx]![1], inner[lastIdx]![0]], [-halfLen, inner[lastIdx]![1], inner[lastIdx]![0]],
     [0, -1, 0])
 
   const geo = new THREE.BufferGeometry()
@@ -322,20 +509,26 @@ function buildMetalEndCaps(
   const uvs: number[] = []
 
   const t = h * SHELL_THICKNESS
-  const lipH = h * 0.25
-  const lipW = halfW * 0.12
+  const lipH = h * 0.3
+  const lipW = halfW * 0.15
+  const beadW = halfW * 0.05
+  const beadH = h * 0.12
 
   const outer: [number, number][] = [
     [-halfW, 0],
     [-halfW + lipW, lipH],
-    [0, h],
+    [-beadW, h],
+    [0, h + beadH],
+    [beadW, h],
     [halfW - lipW, lipH],
     [halfW, 0],
   ]
   const inner: [number, number][] = [
     [-halfW, t],
     [-halfW + lipW, lipH + t],
+    [-beadW, h - t],
     [0, h - t],
+    [beadW, h - t],
     [halfW - lipW, lipH + t],
     [halfW, t],
   ]
@@ -362,10 +555,9 @@ function buildMetalEndCaps(
       }
     }
 
-    // Close the bottom strip (outer-right → inner-right → inner-left → outer-left)
-    const oRightIdx = outer.length - 1
-    const a: [number, number, number] = [x, outer[oRightIdx]![1], outer[oRightIdx]![0]]
-    const b: [number, number, number] = [x, inner[oRightIdx]![1], inner[oRightIdx]![0]]
+    const oLast = outer.length - 1
+    const a: [number, number, number] = [x, outer[oLast]![1], outer[oLast]![0]]
+    const b: [number, number, number] = [x, inner[oLast]![1], inner[oLast]![0]]
     const c: [number, number, number] = [x, inner[0]![1], inner[0]![0]]
     const d: [number, number, number] = [x, outer[0]![1], outer[0]![0]]
 
@@ -387,6 +579,32 @@ function buildMetalEndCaps(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function offsetProfileInward(
+  pts: [number, number][],
+  t: number,
+): [number, number][] {
+  const result: [number, number][] = []
+  for (let i = 0; i < pts.length; i++) {
+    const [z, y] = pts[i]!
+    let dz: number, dy: number
+    if (i === 0) {
+      dz = pts[1]![0] - z
+      dy = pts[1]![1] - y
+    } else if (i === pts.length - 1) {
+      dz = z - pts[i - 1]![0]
+      dy = y - pts[i - 1]![1]
+    } else {
+      dz = pts[i + 1]![0] - pts[i - 1]![0]
+      dy = pts[i + 1]![1] - pts[i - 1]![1]
+    }
+    const len = Math.sqrt(dz * dz + dy * dy) || 1
+    const nz = dy / len
+    const ny = -dz / len
+    result.push([z + nz * t, y + ny * t])
+  }
+  return result
+}
 
 function pushQuad(
   positions: number[],

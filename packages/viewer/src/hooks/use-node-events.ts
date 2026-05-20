@@ -1,4 +1,6 @@
 import {
+  type BoxVentEvent,
+  type BoxVentNode,
   type BuildingEvent,
   type BuildingNode,
   type CeilingEvent,
@@ -75,6 +77,7 @@ type NodeConfig = {
   'solar-panel': { node: SolarPanelNode; event: SolarPanelEvent }
   dormer: { node: DormerNode; event: DormerEvent }
   'ridge-vent': { node: RidgeVentNode; event: RidgeVentEvent }
+  'box-vent': { node: BoxVentNode; event: BoxVentEvent }
 }
 
 type NodeType = keyof NodeConfig
