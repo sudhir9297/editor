@@ -28,15 +28,15 @@ export const DormerNode = BaseNode.extend({
   rotation: z.number().default(0),
   surfaceNormal: z.tuple([z.number(), z.number(), z.number()]).optional(),
 
-  width: z.number().default(2.59),
-  depth: z.number().default(5.0),
+  width: z.number().default(1.4),
+  depth: z.number().default(3.0),
   height: z.number().default(0.2),
 
   roofType: RoofType.default('gable'),
   roofHeight: z.number().default(0.83),
 
   windowWidth: z.number().default(1.2),
-  windowHeight: z.number().default(1.2),
+  windowHeight: z.number().default(1.01),
   windowOffsetX: z.number().default(0),
   windowOffsetY: z.number().default(0.5),
   windowFrameThickness: z.number().default(0.05),

@@ -143,9 +143,6 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   const cols = node.windowColumns ?? 1
   const rows = node.windowRows ?? 1
   const dt = node.windowDividerThickness ?? 0.02
-  const showSill = node.windowSill ?? true
-  const sillDepth = node.windowSillDepth ?? 0.08
-  const sillThickness = node.windowSillThickness ?? 0.03
   const winShape = (node.windowShape ?? 'rectangle') as DormerWindowShape
   const archH = node.windowArchHeight ?? 0.35
   const cornerR = node.windowCornerRadius ?? 0.15
@@ -157,9 +154,9 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   const winGeo = useMemo(() => {
     return buildWindowGeometries(
       skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt,
-      showSill, sillDepth, sillThickness, winShape, archH, resolvedRadii,
+      false, 0, 0, winShape, archH, resolvedRadii,
     )
-  }, [skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt, showSill, sillDepth, sillThickness, winShape, archH, ...resolvedRadii])
+  }, [skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt, winShape, archH, ...resolvedRadii])
 
   useEffect(() => {
     return () => {
@@ -215,19 +212,6 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
           />
         ))}
       </group>
-      {showSill && winGeo.sill && (
-        <mesh
-          geometry={winGeo.sill}
-          key={`${keyPrefix}-sill`}
-          material={frameSideMat}
-          name={`dormer-skirt-sill-${keyPrefix}`}
-          position={[
-            winX + winGeo.sillPos[0],
-            winY + winGeo.sillPos[1],
-            zPos + winGeo.sillPos[2],
-          ]}
-        />
-      )}
     </>
   )
 

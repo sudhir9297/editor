@@ -20,7 +20,6 @@ import { ActionButton, ActionGroup } from '../controls/action-button'
 import { PanelSection } from '../controls/panel-section'
 import { SegmentedControl } from '../controls/segmented-control'
 import { SliderControl } from '../controls/slider-control'
-import { ToggleControl } from '../controls/toggle-control'
 import { PanelWrapper } from './panel-wrapper'
 
 const ROOF_TYPE_OPTIONS: { label: string; value: RoofType }[] = [
@@ -483,43 +482,6 @@ export function DormerPanel() {
           />
         )}
 
-        {/* Sill */}
-        <div className="mt-2 mb-1 border-border/50 border-t pt-2 px-1 font-medium text-[10px] text-muted-foreground/80 uppercase tracking-wider">
-          Sill
-        </div>
-        <ToggleControl
-          checked={node.windowSill ?? true}
-          label="Enable Sill"
-          onChange={(checked) => commitProp({ windowSill: checked })}
-        />
-        {(node.windowSill ?? true) && (
-          <>
-            <SliderControl
-              label="Depth"
-              max={0.3}
-              min={0.01}
-              onChange={(v) => previewProp({ windowSillDepth: v })}
-              onCommit={(v) => commitProp({ windowSillDepth: v })}
-              precision={3}
-              restoreOnCommit={false}
-              step={0.01}
-              unit="m"
-              value={Math.round((node.windowSillDepth ?? 0.08) * 1000) / 1000}
-            />
-            <SliderControl
-              label="Thickness"
-              max={0.1}
-              min={0.01}
-              onChange={(v) => previewProp({ windowSillThickness: v })}
-              onCommit={(v) => commitProp({ windowSillThickness: v })}
-              precision={3}
-              restoreOnCommit={false}
-              step={0.005}
-              unit="m"
-              value={Math.round((node.windowSillThickness ?? 0.03) * 1000) / 1000}
-            />
-          </>
-        )}
       </PanelSection>
 
       <PanelSection title="Position">

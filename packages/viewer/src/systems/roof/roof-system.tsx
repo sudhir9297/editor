@@ -717,7 +717,8 @@ export function getDormerExposedFaces(
   const frontZ = dormerZ + halfDepth * Math.cos(rot)
   const backZ = dormerZ - halfDepth * Math.cos(rot)
 
-  const dormerTop = dormerY + dormer.height + dormer.roofHeight
+  // Wall top (excludes the dormer's own gable peak which only exists at center)
+  const dormerWallTop = dormerY + dormer.height
 
   const hostWh = hostSegment.wallHeight ?? 0.5
   const hostRh = hostSegment.roofType === 'flat' ? 0 : (hostSegment.roofHeight ?? 2.5)
@@ -738,8 +739,8 @@ export function getDormerExposedFaces(
 
   const margin = 0.1
   return {
-    front: dormerTop > roofHeightAtZ(frontZ) - margin,
-    back: dormerTop > roofHeightAtZ(backZ) - margin,
+    front: dormerWallTop > roofHeightAtZ(frontZ) - margin,
+    back: dormerWallTop > roofHeightAtZ(backZ) - margin,
   }
 }
 
