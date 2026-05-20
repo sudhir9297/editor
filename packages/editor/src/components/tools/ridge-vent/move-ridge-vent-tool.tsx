@@ -2,7 +2,7 @@ import '../../../three-types'
 
 import {
   type AnyNodeId,
-  type DormerNode,
+  type RidgeVentNode,
   emitter,
   type RoofEvent,
   type RoofNode,
@@ -24,7 +24,7 @@ function resolveSegmentFromWorldPoint(
   worldY: number,
   worldZ: number,
   state: ReturnType<typeof useScene.getState>,
-): { segment: RoofSegmentNode; localX: number; localY: number; localZ: number } | null {
+): { segment: RoofSegmentNode; localX: number; localZ: number } | null {
   const worldPt = new THREE.Vector3(worldX, worldY, worldZ)
   for (const childId of roof.children ?? []) {
     const seg = state.nodes[childId as AnyNodeId] as RoofSegmentNode | undefined
@@ -34,7 +34,7 @@ function resolveSegmentFromWorldPoint(
     segObj.updateWorldMatrix(true, false)
     const local = segObj.worldToLocal(worldPt.clone())
     if (Math.abs(local.x) <= seg.width / 2 && Math.abs(local.z) <= seg.depth / 2) {
-      return { segment: seg, localX: local.x, localY: local.y, localZ: local.z }
+      return { segment: seg, localX: local.x, localZ: local.z }
     }
   }
   return null
@@ -43,85 +43,81 @@ function resolveSegmentFromWorldPoint(
 const previewMaterial = new THREE.MeshStandardMaterial({
   color: 0x88_88_88,
   transparent: true,
-  opacity: 0.45,
+  opacity: 0.6,
   depthWrite: false,
+  side: THREE.DoubleSide,
 })
 
-export function MoveDormerTool({ node }: { node: DormerNode }) {
+export function MoveRidgeVentTool({ node }: { node: RidgeVentNode }) {
   const exitMoveMode = useCallback(() => {
     useEditor.getState().setMovingNode(null)
   }, [])
 
   const previewRef = useRef<THREE.Group>(null!)
   const [previewPos, setPreviewPos] = useState<[number, number, number]>([0, 0, 0])
-  const [previewRotY, setPreviewRotY] = useState(0)
-  const [hasHit, setHasHit] = useState(false)
+
+  const segment = useScene((s) =>
+    node.roofSegmentId
+      ? (s.nodes[node.roofSegmentId as AnyNodeId] as RoofSegmentNode | undefined)
+      : undefined,
+  )
 
   const previewGeo = useMemo(() => {
-    const w = Math.max(0.01, Number.isFinite(node.width) ? node.width : 2)
-    const wallH = Math.max(0.01, Number.isFinite(node.height) ? node.height : 1.2)
-    const roofH = Math.max(0, Number.isFinite(node.roofHeight) ? node.roofHeight : 0.6)
-    const d = Math.max(0.01, Number.isFinite(node.depth) ? node.depth : 1.5)
-    const hw = w / 2
+    if (!segment) return null
+    const halfLen = node.length / 2
+    const halfW = node.width / 2
+    const h = node.height
+    const segs = 6
 
-    const dropBelow = 2
+    // Curved cap preview matching the actual ridge vent profile, bottom at y=0
+    const verts: number[] = []
+    for (let i = 0; i < segs; i++) {
+      const f0 = i / segs
+      const f1 = (i + 1) / segs
+      const z0 = -halfW + f0 * 2 * halfW
+      const z1 = -halfW + f1 * 2 * halfW
+      const y0 = h * Math.sin(Math.PI * f0)
+      const y1 = h * Math.sin(Math.PI * f1)
 
-    const shape = new THREE.Shape()
-    shape.moveTo(-hw, -dropBelow)
-    shape.lineTo(hw, -dropBelow)
-
-    {
-      shape.lineTo(hw, wallH)
-      shape.lineTo(0, wallH + roofH)
-      shape.lineTo(-hw, wallH)
+      // Two triangles per quad strip segment
+      verts.push(
+        -halfLen, y0, z0,  halfLen, y0, z0,  halfLen, y1, z1,
+        -halfLen, y0, z0,  halfLen, y1, z1, -halfLen, y1, z1,
+      )
     }
 
-    shape.closePath()
-
-    const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: d,
-      bevelEnabled: false,
-    })
-    geo.translate(0, 0, -d / 2)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3))
+    geo.computeVertexNormals()
     return geo
-  }, [node.width, node.depth, node.height, node.roofHeight, node.roofType])
-
-  useEffect(() => {
-    return () => {
-      previewGeo.dispose()
-    }
-  }, [previewGeo])
+  }, [segment, node.length, node.width, node.height])
 
   useEffect(() => {
     useScene.temporal.getState().pause()
-
-    const original = {
-      position: [...node.position] as [number, number, number],
-      rotation: node.rotation ?? 0,
-      roofSegmentId: node.roofSegmentId,
-      parentId: node.parentId,
-      metadata: node.metadata,
-    }
-
-    let wasCancelled = false
 
     const meta =
       typeof node.metadata === 'object' && node.metadata !== null
         ? (node.metadata as Record<string, unknown>)
         : {}
     const isNew = !!meta.isNew
+
+    const original = {
+      position: [...node.position] as [number, number, number],
+      rotation: node.rotation ?? 0,
+      roofSegmentId: node.roofSegmentId,
+      parentId: node.parentId,
+      visible: node.visible,
+      metadata: node.metadata,
+    }
+
     useScene.getState().updateNode(node.id as AnyNodeId, {
       metadata: { ...meta, isTransient: true },
     })
 
-    const dormerObj = sceneRegistry.nodes.get(node.id)
-    if (dormerObj) dormerObj.visible = false
+    const ventObj = sceneRegistry.nodes.get(node.id)
+    if (ventObj) ventObj.visible = false
 
-    const worldToBuildingLocal = (
-      wx: number,
-      wy: number,
-      wz: number,
-    ): [number, number, number] => {
+    const worldToBuildingLocal = (wx: number, wy: number, wz: number): [number, number, number] => {
       const buildingId = useViewer.getState().selection.buildingId
       const buildingObj = buildingId ? sceneRegistry.nodes.get(buildingId as AnyNodeId) : null
       if (buildingObj) {
@@ -134,54 +130,26 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
 
     let lastSnapX = 0
     let lastSnapZ = 0
-    let lastWorldNormal: THREE.Vector3 | undefined
-
-    const captureNormal = (event: RoofEvent) => {
-      if (!event.normal) return
-      const n = new THREE.Vector3(event.normal[0], event.normal[1], event.normal[2])
-      const nm = new THREE.Matrix3().getNormalMatrix(event.object.matrixWorld)
-      n.applyMatrix3(nm).normalize()
-      lastWorldNormal = n
-    }
-
-    const computeSegmentWorldRotY = (event: RoofEvent): number => {
-      const roof = event.node as RoofNode
-      const st = useScene.getState()
-      const hit = resolveSegmentFromWorldPoint(
-        roof,
-        event.position[0],
-        event.position[1],
-        event.position[2],
-        st,
-      )
-      if (!hit) return 0
-      const segObj = sceneRegistry.nodes.get(hit.segment.id)
-      if (!segObj) return 0
-      segObj.updateWorldMatrix(true, false)
-      const euler = new THREE.Euler().setFromRotationMatrix(segObj.matrixWorld, 'YXZ')
-      return euler.y
-    }
 
     const onRoofMove = (event: RoofEvent) => {
-      const sx = Math.round(event.position[0] * 20) / 20
-      const sz = Math.round(event.position[2] * 20) / 20
+      const wx = event.position[0]
+      const wy = event.position[1]
+      const wz = event.position[2]
+
+      const sx = Math.round(wx * 20) / 20
+      const sz = Math.round(wz * 20) / 20
       if (sx !== lastSnapX || sz !== lastSnapZ) {
         sfxEmitter.emit('sfx:grid-snap')
         lastSnapX = sx
         lastSnapZ = sz
       }
-      captureNormal(event)
-      setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
-      setPreviewRotY(computeSegmentWorldRotY(event) + (node.rotation ?? 0))
-      setHasHit(true)
+
+      setPreviewPos(worldToBuildingLocal(wx, wy, wz))
       event.stopPropagation()
     }
 
     const onRoofEnter = (event: RoofEvent) => {
-      captureNormal(event)
       setPreviewPos(worldToBuildingLocal(event.position[0], event.position[1], event.position[2]))
-      setPreviewRotY(computeSegmentWorldRotY(event) + (node.rotation ?? 0))
-      setHasHit(true)
       event.stopPropagation()
     }
 
@@ -199,8 +167,18 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
       if (!hit) return
 
       const targetSegmentId = hit.segment.id as AnyNodeId
-      const finalRotation = original.rotation
 
+      let finalRotation = original.rotation
+      if (original.roofSegmentId && original.roofSegmentId !== (targetSegmentId as string)) {
+        const prevSeg = st.nodes[original.roofSegmentId as AnyNodeId] as
+          | RoofSegmentNode
+          | undefined
+        if (prevSeg) {
+          finalRotation = prevSeg.rotation + original.rotation - hit.segment.rotation
+        }
+      }
+
+      // Restore original state for clean undo baseline.
       st.updateNode(node.id as AnyNodeId, {
         position: original.position,
         rotation: original.rotation,
@@ -210,24 +188,20 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
       })
       useScene.temporal.getState().resume()
 
-      captureNormal(event)
-      let worldNormalArr: [number, number, number] | undefined
-      if (lastWorldNormal) {
-        worldNormalArr = [lastWorldNormal.x, lastWorldNormal.y, lastWorldNormal.z]
-      } else {
-        const current = st.nodes[node.id as AnyNodeId] as DormerNode | undefined
-        worldNormalArr = current?.surfaceNormal as [number, number, number] | undefined
-      }
-
       st.updateNode(node.id as AnyNodeId, {
         roofSegmentId: targetSegmentId,
         parentId: targetSegmentId,
-        position: [hit.localX, hit.localY, hit.localZ],
+        position: [hit.localX, 0, hit.localZ],
         rotation: finalRotation,
-        surfaceNormal: worldNormalArr,
         visible: true,
         metadata: {},
       })
+
+      if (original.roofSegmentId && original.roofSegmentId !== (targetSegmentId as string)) {
+        st.dirtyNodes.add(original.roofSegmentId as AnyNodeId)
+      }
+      st.dirtyNodes.add(targetSegmentId)
+      st.dirtyNodes.add(node.id as AnyNodeId)
 
       useScene.temporal.getState().pause()
 
@@ -240,8 +214,6 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
     }
 
     const onCancel = () => {
-      wasCancelled = true
-
       if (isNew) {
         useScene.temporal.getState().resume()
         useScene.getState().deleteNode(node.id as AnyNodeId)
@@ -257,6 +229,9 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
         parentId: original.parentId as AnyNodeId | undefined,
         metadata: original.metadata,
       })
+      if (original.roofSegmentId) {
+        useScene.getState().dirtyNodes.add(original.roofSegmentId as AnyNodeId)
+      }
 
       const obj = sceneRegistry.nodes.get(node.id)
       if (obj) obj.visible = true
@@ -283,9 +258,15 @@ export function MoveDormerTool({ node }: { node: DormerNode }) {
     }
   }, [exitMoveMode, node])
 
+  if (!previewGeo) return null
+
   return (
-    <group position={previewPos} ref={previewRef} rotation-y={previewRotY} visible={hasHit}>
-      <mesh geometry={previewGeo} layers={EDITOR_LAYER} material={previewMaterial} />
+    <group position={previewPos} ref={previewRef} rotation-y={node.rotation ?? 0}>
+      <mesh
+        geometry={previewGeo}
+        layers={EDITOR_LAYER}
+        material={previewMaterial}
+      />
     </group>
   )
 }

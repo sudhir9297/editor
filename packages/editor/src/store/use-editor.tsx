@@ -8,6 +8,7 @@ import {
   type ChimneyNode,
   type DormerNode,
   type DormerSurfaceMaterialRole,
+  type RidgeVentNode,
   type SolarPanelNode,
   type ColumnNode,
   type SkylightNode,
@@ -161,6 +162,7 @@ type EditorState = {
     | SkylightNode
     | SolarPanelNode
     | DormerNode
+    | RidgeVentNode
     | null
   setMovingNode: (
     node:
@@ -183,6 +185,7 @@ type EditorState = {
       | SkylightNode
       | SolarPanelNode
       | DormerNode
+      | RidgeVentNode
       | null,
   ) => void
   movingWallEndpoint: MovingWallEndpoint | null
@@ -597,6 +600,7 @@ const useEditor = create<EditorState>()(
         | SkylightNode
         | SolarPanelNode
         | DormerNode
+        | RidgeVentNode
             | null,
       setMovingNode: (node) => set({ movingNode: node }),
       movingWallEndpoint: null,

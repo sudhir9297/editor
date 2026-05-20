@@ -7,6 +7,7 @@ export type {
   ColumnEvent,
   DormerEvent,
   DoorEvent,
+  RidgeVentEvent,
   ElevatorEvent,
   EventSuffix,
   FenceEvent,

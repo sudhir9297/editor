@@ -27,6 +27,7 @@ import useEditor from '../../../store/use-editor'
 import { CeilingPanel } from './ceiling-panel'
 import { ChimneyPanel } from './chimney-panel'
 import { DormerPanel } from './dormer-panel'
+import { RidgeVentPanel } from './ridge-vent-panel'
 import { SkylightPanel } from './skylight-panel'
 import { SolarPanelPanel } from './solar-panel-panel'
 import { ColumnPanel } from './column-panel'
@@ -124,6 +125,8 @@ function panelForType(type: string | null) {
       return <SolarPanelPanel />
     case 'dormer':
       return <DormerPanel />
+    case 'ridge-vent':
+      return <RidgeVentPanel />
     default:
       return null
   }

@@ -4,6 +4,7 @@ import { BaseNode, nodeType, objectId } from '../base'
 import { MaterialSchema } from '../material'
 import { ChimneyNode } from './chimney'
 import { DormerNode } from './dormer'
+import { RidgeVentNode } from './ridge-vent'
 import { RoofType } from './roof-type'
 import { SkylightNode } from './skylight'
 import { SolarPanelNode } from './solar-panel'
@@ -22,6 +23,7 @@ export const RoofSegmentNode = BaseNode.extend({
         SkylightNode.shape.id,
         SolarPanelNode.shape.id,
         DormerNode.shape.id,
+        RidgeVentNode.shape.id,
       ]),
     )
     .default([]),

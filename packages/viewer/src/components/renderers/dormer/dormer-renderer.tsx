@@ -87,6 +87,7 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
     // Slots: 0=wall, 1=side, 2=interior(wall), 3=roof, 4=gable(wall)
     return [w, s, w, t, w] as THREE.Material[]
   }, [
+    node.roofType,
     node.material, node.materialPreset,
     node.topMaterial, node.topMaterialPreset,
     node.sideMaterial, node.sideMaterialPreset,
@@ -143,7 +144,10 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
   const cols = node.windowColumns ?? 1
   const rows = node.windowRows ?? 1
   const dt = node.windowDividerThickness ?? 0.02
-  const winShape = (node.windowShape ?? 'rectangle') as DormerWindowShape
+
+  const winW = skirtWin.width
+  const winH = skirtWin.height
+  const winShape: DormerWindowShape = (node.windowShape ?? 'rectangle') as DormerWindowShape
   const archH = node.windowArchHeight ?? 0.35
   const cornerR = node.windowCornerRadius ?? 0.15
   const radiusMode = node.windowRadiusMode ?? 'all'
@@ -153,10 +157,10 @@ export const DormerRenderer = ({ node: storeNode }: { node: DormerNode }) => {
 
   const winGeo = useMemo(() => {
     return buildWindowGeometries(
-      skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt,
+      winW, winH, ft, fd, cols, rows, dt,
       false, 0, 0, winShape, archH, resolvedRadii,
     )
-  }, [skirtWin.width, skirtWin.height, ft, fd, cols, rows, dt, winShape, archH, ...resolvedRadii])
+  }, [winW, winH, ft, fd, cols, rows, dt, winShape, archH, ...resolvedRadii])
 
   useEffect(() => {
     return () => {

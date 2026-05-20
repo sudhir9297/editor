@@ -7,6 +7,8 @@ import {
   ChimneyNode as ChimneyNodeSchema,
   type DormerNode,
   DormerNode as DormerNodeSchema,
+  type RidgeVentNode,
+  RidgeVentNode as RidgeVentNodeSchema,
   type RoofNode,
   type SkylightNode,
   SkylightNode as SkylightNodeSchema,
@@ -153,6 +155,25 @@ export function RoofPanel() {
     setMovingNode(solarPanel)
   }, [node, segments, createNode, setSelection, setMovingNode])
 
+  const handleAddRidgeVent = useCallback(() => {
+    if (!node) return
+    const firstSegment = segments[0]
+    if (!firstSegment) {
+      console.warn('[roof-panel] Add Ridge Vent: roof has no segments yet.')
+      return
+    }
+    const ridgeVent = RidgeVentNodeSchema.parse({
+      roofSegmentId: firstSegment.id,
+      parentId: firstSegment.id,
+      position: [0, 0, 0],
+      visible: false,
+      metadata: { isNew: true, isTransient: true },
+    })
+    createNode(ridgeVent, firstSegment.id as AnyNodeId)
+    setSelection({ selectedIds: [ridgeVent.id as AnyNode['id']] })
+    setMovingNode(ridgeVent)
+  }, [node, segments, createNode, setSelection, setMovingNode])
+
   // Flatten chimneys, skylights, and solar panels hosted by any segment of this roof.
   const chimneys = useScene(
     useShallow((s) => {
@@ -212,6 +233,22 @@ export function RoofPanel() {
         for (const childId of seg.children ?? []) {
           const child = s.nodes[childId as AnyNodeId] as DormerNode | undefined
           if (child?.type === 'dormer') out.push(child)
+        }
+      }
+      return out
+    }),
+  )
+
+  const ridgeVents = useScene(
+    useShallow((s) => {
+      if (!node) return []
+      const out: RidgeVentNode[] = []
+      for (const segmentId of node.children ?? []) {
+        const seg = s.nodes[segmentId as AnyNodeId] as RoofSegmentNode | undefined
+        if (!seg) continue
+        for (const childId of seg.children ?? []) {
+          const child = s.nodes[childId as AnyNodeId] as RidgeVentNode | undefined
+          if (child?.type === 'ridge-vent') out.push(child)
         }
       }
       return out
@@ -370,6 +407,27 @@ export function RoofPanel() {
                 icon={<Plus className="h-3.5 w-3.5" />}
                 label="Add Dormer"
                 onClick={handleAddDormer}
+              />
+            </ActionGroup>
+          </div>
+          <div className="flex flex-col gap-1">
+            {ridgeVents.map((vent, i) => (
+              <button
+                className="flex items-center justify-between rounded-lg border border-border/50 bg-[#2C2C2E] px-3 py-2 text-foreground text-sm transition-colors hover:bg-[#3e3e3e]"
+                key={vent.id}
+                onClick={() => setSelection({ selectedIds: [vent.id as AnyNode['id']] })}
+                type="button"
+              >
+                <span className="truncate">{vent.name || `Ridge Vent ${i + 1}`}</span>
+                <span className="text-muted-foreground text-xs">ridge vent</span>
+              </button>
+            ))}
+            <ActionGroup>
+              <ActionButton
+                disabled={segments.length === 0}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                label="Add Ridge Vent"
+                onClick={handleAddRidgeVent}
               />
             </ActionGroup>
           </div>

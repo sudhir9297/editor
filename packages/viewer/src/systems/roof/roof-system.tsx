@@ -67,7 +67,8 @@ export const RoofSystem = () => {
         node.type === 'chimney' ||
         node.type === 'skylight' ||
         node.type === 'solar-panel' ||
-        node.type === 'dormer'
+        node.type === 'dormer' ||
+        node.type === 'ridge-vent'
       ) {
         const seg = (node as { roofSegmentId?: string }).roofSegmentId
           ? (nodes[(node as { roofSegmentId?: string }).roofSegmentId as AnyNodeId] as
@@ -894,6 +895,7 @@ export function getDormerWindowDims(dormer: DormerNode): {
   return { width, height, sillY, centerY }
 }
 
+
 /**
  * Build the trimmed geometry for a dormer hosted on a roof segment.
  *
@@ -911,6 +913,7 @@ export function generateDormerGeometry(
   dormer: DormerNode,
   hostSegment: RoofSegmentNode,
 ): THREE.BufferGeometry {
+
   // Different roof types want different faces toward the viewer:
   //  • Gable/hip/etc: long side wall faces front → bake +π/2 yaw + swap
   //    width<->depth so the user's "width" stays along segment-local X.
@@ -1792,7 +1795,6 @@ export function buildDormerInnerBrush(dormer: DormerNode): Brush | null {
   prepareBrushForCSG(innerBrush)
   return innerBrush
 }
-
 type SurfaceFrame = {
   point: THREE.Vector3
   normal: THREE.Vector3
