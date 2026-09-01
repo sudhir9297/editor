@@ -7,6 +7,8 @@ WebXR is an optional presentation path for the existing scene. It does not add X
 ```text
 packages/viewer/src/xr/
 ├── god-mode/        # Encapsulates God-scale scene transforms, controller grips, palm grabs, and reset state.
+├── human-mode/      # Owns first-person movement, snap turn, hand locomotion, comfort, and scene collision.
+├── mode-switching/  # Coordinates God/Human transitions without changing persisted scene data.
 ├── presentation-context.tsx # Tells renderers when the scene is using direct immersive presentation.
 ├── session-root.tsx  # Connects the R3F scene to an XR store and hands frame timing to the headset.
 ├── store.ts          # Creates the reusable XR session store with default hand/controller rendering.
@@ -29,6 +31,8 @@ apps/editor/app/xr/
 
 - `packages/viewer` owns renderer and session integration because those are generic presentation concerns. Its public API is `createViewerXRStore()`, `getImmersiveVRSupport()`, and the optional `Viewer.xr` configuration.
 - `packages/viewer/src/xr/god-mode` owns the reusable God-scale interaction module. It transforms a presentation-only scene root and never writes scene graph data.
+- `packages/viewer/src/xr/human-mode` owns reusable first-person XR input and collision. It operates on the XR origin and rendered mesh BVHs, not editor tools or scene graph state.
+- `packages/viewer/src/xr/mode-switching` owns the presentation-only transition between God and Human scale and restores the prior God transform when switching back.
 - `packages/editor` only passes the host-provided XR configuration through to its main viewer canvas.
 - `apps/editor` owns the dedicated XR routes, toolbar button, and development emulator. These are standalone-app concerns and must not leak into the reusable viewer.
 - `packages/core` remains unchanged because entering XR does not change persisted scene data.
@@ -61,9 +65,12 @@ This starts the Next.js editor on all interfaces with its development HTTPS cert
 - The IWER DevUI is registered with the emulated device, so entering VR shows headset and controller transforms, buttons, sticks, reset, play mode, and session-exit controls over the XR canvas.
 - The standalone test environment explicitly mounts the DevUI canvas and controls while an emulated session is active. This covers Three's forced-WebGL backend, which can initialize the XR session without invoking IWER's normal base-layer attachment callback.
 - Controllers and hands use the same `DefaultXRController` and `DefaultXRHand` implementations as WebXR Home.
-- The XR camera uses the reference project's `0.001–10000` clipping range and an explicit `XROrigin`. The standalone preview opts into God mode and starts at the reference project's elevated `[0, 4.5, 8]` origin.
+- The XR camera uses the reference project's `0.001–10000` clipping range and an explicit `XROrigin`. The standalone preview starts in God mode at the reference project's elevated `[0, 4.5, 8]` origin.
 - God mode wraps only rendered scene geometry in `god-scale-scene-root`; lights, cameras, controller/hand models, and the XR origin remain outside that transform. One grip pans the scene, two grips pan/rotate/scale it, and a held three-finger curl exposes the same grab interaction for tracked hands.
 - Reset restores the scene root to identity and the XR origin to the default God-view pose. These are presentation transforms and are never persisted to `packages/core`.
+- Human mode restores the scene to world scale. The left controller stick moves relative to head direction, the right stick snap-turns, and movement is resolved through a player capsule against the rendered scene's BVHs.
+- With hand tracking, pinching inside the left wrist zone drives locomotion and pinching inside the right wrist zone drives turning. Movement and turns use the same comfort vignette and haptic feedback behavior as WebXR Home.
+- Press the left controller Y button, hold both tracked thumb tips together for 0.8 seconds, or use the mode button in the test environment to switch between God and Human mode. The hand gesture fires once per hold and rearms after the thumbs separate. Returning to God mode restores the scene transform captured before entering Human mode.
 - XR supplies a plain theme background because the desktop sky gradient belongs to the post-processing pipeline.
 - The site's presentation-only horizon disc is suppressed in immersive XR because its fade depends on the desktop post-processing backdrop. The real site ground, slabs, terrain, and scene geometry remain visible.
 - The Synthetic Environment Module is not registered for VR testing because it adds its own floor grid and environment canvas. Add it only when an AR/MR feature needs synthetic planes, meshes, depth, or hit testing.
@@ -77,4 +84,4 @@ The toolbar remains icon-only. Hovering the headset icon reports `Enter VR with 
 
 ## Current scope
 
-The XR preview renders the existing scene with default controller and hand models plus God-scale navigation. It does not yet include locomotion, first-person mode, authoring tools, spatial panels, or XR-specific scene mutations. Those features should be added independently under the same ownership boundaries.
+The XR preview renders the existing scene with default controller and hand models, God-scale navigation, and Human-mode locomotion. Human mode includes controller and hand input, snap turning, comfort vignette, haptics, and BVH collision against rendered scene geometry. Authoring tools, spatial panels, and XR-specific scene mutations remain out of scope.

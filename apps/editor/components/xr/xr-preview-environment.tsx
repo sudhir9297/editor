@@ -1,8 +1,14 @@
 'use client'
 
 import { applySceneGraphToEditor, type SceneGraph } from '@pascal-app/editor'
-import { requestGodScaleReset, Viewer } from '@pascal-app/viewer'
-import { Glasses, LoaderCircle, RotateCcw, X } from 'lucide-react'
+import {
+  requestGodScaleReset,
+  toggleXRPlayerMode,
+  useXRPlayerMode,
+  Viewer,
+  XR_PLAYER_MODES,
+} from '@pascal-app/viewer'
+import { Glasses, LoaderCircle, Orbit, PersonStanding, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { mountEmulatorControls } from '@/lib/xr/emulator'
 import { requestEditorVRSession, useEditorXRRuntime, xrConfigForRuntime } from './xr-runtime'
@@ -20,6 +26,7 @@ export function XRPreviewEnvironment({ sceneId }: { sceneId?: string }) {
   const [session, setSession] = useState<XRSession>()
   const [error, setError] = useState<string | null>(null)
   const [inputSummary, setInputSummary] = useState('No tracked inputs')
+  const playerMode = useXRPlayerMode((state) => state.mode)
 
   useEffect(() => {
     let cancelled = false
@@ -103,17 +110,31 @@ export function XRPreviewEnvironment({ sceneId }: { sceneId?: string }) {
       <main className="relative h-screen w-screen overflow-hidden bg-black">
         <Viewer disablePostFx maxFps={90} renderContext="viewer" xr={xr} />
         <div className="absolute top-4 left-4 z-[1000] rounded-full border border-white/20 bg-black/60 px-3 py-1.5 text-white text-xs backdrop-blur">
-          {inputSummary}
+          {playerMode === XR_PLAYER_MODES.GOD ? 'God mode' : 'Human mode'} · {inputSummary}
         </div>
         <div className="absolute top-4 right-4 z-[1000] flex gap-2">
           <button
-            aria-label="Reset God view"
+            aria-label={`Switch to ${playerMode === XR_PLAYER_MODES.GOD ? 'Human' : 'God'} mode`}
             className="rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"
-            onClick={requestGodScaleReset}
+            onClick={toggleXRPlayerMode}
             type="button"
           >
-            <RotateCcw className="h-4 w-4" />
+            {playerMode === XR_PLAYER_MODES.GOD ? (
+              <PersonStanding className="h-4 w-4" />
+            ) : (
+              <Orbit className="h-4 w-4" />
+            )}
           </button>
+          {playerMode === XR_PLAYER_MODES.GOD && (
+            <button
+              aria-label="Reset God view"
+              className="rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"
+              onClick={requestGodScaleReset}
+              type="button"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          )}
           <button
             aria-label="Exit VR test environment"
             className="rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"

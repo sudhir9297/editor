@@ -1,0 +1,205 @@
+'use client'
+
+import { useFrame, useThree } from '@react-three/fiber'
+import {
+  DefaultXRHand,
+  useXR,
+  useXRInputSourceState,
+  useXRInputSourceStateContext,
+  type XRControllerState,
+  XRSpace,
+} from '@react-three/xr'
+import { type ReactNode, useCallback, useEffect, useRef } from 'react'
+import { Euler, type Group, type Object3D, Vector3 } from 'three'
+import { GOD_ORIGIN_POSITION, GOD_ORIGIN_ROTATION } from '../../god-mode'
+import { GodModeHandControls } from '../../god-mode/input/god-mode-hand-controls'
+import { GodModeControls } from '../../god-mode/ui/god-mode-controls'
+import { HumanModeHandControls } from '../../human-mode/input/hand-locomotion'
+import { pulseInputSource } from '../../human-mode/lib/haptics'
+import { HumanModeControls } from '../../human-mode/ui/human-mode-controls'
+import type { ViewerXRStore } from '../../store'
+import {
+  captureGodSceneTransform,
+  resetSceneForHumanScale,
+  resolveHumanPointInScene,
+  resolveXRHumanOriginTarget,
+  restoreGodSceneTransform,
+  type SceneTransform,
+} from '../lib/scene-scale-transition'
+import {
+  advanceThumbModeGesture,
+  areThumbTipsTouching,
+  type ThumbModeGestureState,
+} from '../lib/thumb-mode-gesture'
+import { useXRPlayerMode, XR_PLAYER_MODES } from '../store/player-mode'
+
+function PlayerModeHandInput() {
+  return (
+    <>
+      <DefaultXRHand />
+      <GodModeHandControls />
+      <HumanModeHandControls />
+      <PlayerModeHandThumbInput />
+    </>
+  )
+}
+
+type Handedness = 'left' | 'right'
+
+const thumbObjects: Record<Handedness, Object3D | null> = { left: null, right: null }
+
+function PlayerModeHandThumbInput() {
+  const state = useXRInputSourceStateContext('hand')
+  const handedness = state.inputSource.handedness
+  const setThumbObject = useCallback(
+    (object: Object3D | null) => {
+      if (handedness === 'left' || handedness === 'right') thumbObjects[handedness] = object
+    },
+    [handedness],
+  )
+
+  return <XRSpace ref={setThumbObject} space="thumb-tip" />
+}
+
+function PlayerModeHandToggle() {
+  const leftThumb = useRef({ position: new Vector3(), visible: false })
+  const rightThumb = useRef({ position: new Vector3(), visible: false })
+  const gesture = useRef<ThumbModeGestureState>({ elapsed: 0, triggered: false })
+
+  useFrame((_, delta) => {
+    const leftObject = thumbObjects.left
+    const rightObject = thumbObjects.right
+    leftThumb.current.visible = leftObject?.visible === true
+    rightThumb.current.visible = rightObject?.visible === true
+    if (leftThumb.current.visible) leftObject!.getWorldPosition(leftThumb.current.position)
+    if (rightThumb.current.visible) rightObject!.getWorldPosition(rightThumb.current.position)
+
+    if (
+      advanceThumbModeGesture(
+        gesture.current,
+        areThumbTipsTouching(leftThumb.current, rightThumb.current),
+        delta,
+      )
+    ) {
+      useXRPlayerMode.getState().toggle()
+    }
+  })
+
+  return null
+}
+
+function isModeButtonPressed(controller: XRControllerState | undefined) {
+  if (controller?.gamepad?.['y-button']?.state === 'pressed') return true
+  return controller?.inputSource.gamepad?.buttons[5]?.pressed === true
+}
+
+function PlayerModeControllerToggle() {
+  const leftController = useXRInputSourceState('controller', 'left')
+  const pressed = useRef(false)
+
+  useFrame(() => {
+    const nextPressed = isModeButtonPressed(leftController)
+    if (!pressed.current && nextPressed) {
+      useXRPlayerMode.getState().toggle()
+      pulseInputSource(leftController?.inputSource, 0.25, 35)
+    }
+    pressed.current = nextPressed
+  })
+  return null
+}
+
+function PlayerModeRig({ sceneRootRef }: { sceneRootRef: React.RefObject<Group | null> }) {
+  const camera = useThree((state) => state.camera)
+  const origin = useXR((state) => state.origin)
+  const mode = useXRPlayerMode((state) => state.mode)
+  const previousMode = useRef(mode)
+  const transitionActive = useRef(false)
+  const godTransform = useRef<SceneTransform | null>(null)
+  const cameraWorldPosition = useRef(new Vector3())
+  const cameraDirection = useRef(new Vector3())
+  const cameraLocalPosition = useRef(new Vector3())
+  const humanPoint = useRef(new Vector3())
+  const targetPosition = useRef(new Vector3())
+  const targetRotation = useRef(new Euler())
+
+  useFrame((_, delta) => {
+    const root = sceneRootRef.current
+    if (!root || !origin) return
+
+    if (mode !== previousMode.current) {
+      if (mode === XR_PLAYER_MODES.HUMAN) {
+        godTransform.current = captureGodSceneTransform(root)
+        camera.getWorldPosition(cameraWorldPosition.current)
+        camera.getWorldDirection(cameraDirection.current)
+        resolveHumanPointInScene(
+          root,
+          cameraWorldPosition.current,
+          cameraDirection.current,
+          humanPoint.current,
+        )
+        cameraLocalPosition.current.copy(cameraWorldPosition.current)
+        origin.worldToLocal(cameraLocalPosition.current)
+        resolveXRHumanOriginTarget(
+          humanPoint.current,
+          cameraLocalPosition.current,
+          targetPosition.current,
+        )
+        resetSceneForHumanScale(root)
+        targetRotation.current.set(0, 0, 0)
+      } else {
+        restoreGodSceneTransform(root, godTransform.current)
+        targetPosition.current.copy(GOD_ORIGIN_POSITION)
+        targetRotation.current.copy(GOD_ORIGIN_ROTATION)
+      }
+      previousMode.current = mode
+      transitionActive.current = true
+    }
+
+    if (!transitionActive.current) return
+
+    const blend = 1 - Math.exp(-delta * 8)
+    origin.position.lerp(targetPosition.current, blend)
+    origin.rotation.x += (targetRotation.current.x - origin.rotation.x) * blend
+    origin.rotation.y += (targetRotation.current.y - origin.rotation.y) * blend
+    origin.rotation.z += (targetRotation.current.z - origin.rotation.z) * blend
+    if (origin.position.distanceTo(targetPosition.current) < 0.002) {
+      origin.position.copy(targetPosition.current)
+      origin.rotation.copy(targetRotation.current)
+      transitionActive.current = false
+    }
+  })
+
+  return null
+}
+
+export function PlayerModeScene({
+  children,
+  store,
+}: {
+  children: ReactNode
+  store: ViewerXRStore
+}) {
+  const sceneRootRef = useRef<Group | null>(null)
+
+  useEffect(() => {
+    useXRPlayerMode.getState().setMode(XR_PLAYER_MODES.GOD)
+    store.setHand(PlayerModeHandInput)
+    return () => {
+      store.setHand(DefaultXRHand)
+      useXRPlayerMode.getState().setMode(XR_PLAYER_MODES.GOD)
+    }
+  }, [store])
+
+  return (
+    <>
+      <PlayerModeControllerToggle />
+      <PlayerModeHandToggle />
+      <PlayerModeRig sceneRootRef={sceneRootRef} />
+      <GodModeControls sceneRootRef={sceneRootRef} />
+      <HumanModeControls sceneRootRef={sceneRootRef} />
+      <group name="xr-player-scene-root" ref={sceneRootRef}>
+        {children}
+      </group>
+    </>
+  )
+}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useFrame } from '@react-three/fiber'
-import { DefaultXRHand, useXRInputSourceStateContext, XRSpace } from '@react-three/xr'
+import { useXRInputSourceStateContext, XRSpace } from '@react-three/xr'
 import { useEffect, useRef } from 'react'
 import { type Object3D, Vector3 } from 'three'
 import { advancePalmGrab, type PalmGrabPose } from '../lib/palm-grab'
@@ -90,15 +90,6 @@ export function GodModeHandControls() {
       <XRSpace ref={ringFingerTip} space="ring-finger-tip" />
       <XRSpace ref={pinkyMetacarpal} space="pinky-finger-metacarpal" />
       <XRSpace ref={pinkyFingerTip} space="pinky-finger-tip" />
-    </>
-  )
-}
-
-export function GodModeHandInput() {
-  return (
-    <>
-      <DefaultXRHand />
-      <GodModeHandControls />
     </>
   )
 }

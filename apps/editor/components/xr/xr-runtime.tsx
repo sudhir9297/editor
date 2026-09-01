@@ -67,7 +67,7 @@ export function xrConfigForRuntime(
   session?: XRSession,
 ): ViewerXRConfig | undefined {
   return runtime.status === 'ready'
-    ? { godMode: true, multiview: false, session, store: runtime.store }
+    ? { multiview: false, playerModes: true, session, store: runtime.store }
     : undefined
 }
 

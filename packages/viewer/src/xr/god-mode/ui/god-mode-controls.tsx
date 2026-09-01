@@ -1,17 +1,11 @@
 'use client'
 
 import { useFrame } from '@react-three/fiber'
-import {
-  DefaultXRHand,
-  useXR,
-  useXRInputSourceState,
-  type XRControllerState,
-} from '@react-three/xr'
-import { type ReactNode, type RefObject, useEffect, useRef } from 'react'
-import { type Group, type Object3D, Vector3 } from 'three'
-import type { ViewerXRStore } from '../../store'
+import { useXR, useXRInputSourceState, type XRControllerState } from '@react-three/xr'
+import { type RefObject, useEffect, useRef } from 'react'
+import { type Object3D, Vector3 } from 'three'
+import { useXRPlayerMode, XR_PLAYER_MODES } from '../../mode-switching/store/player-mode'
 import { GOD_ORIGIN_POSITION, GOD_ORIGIN_ROTATION } from '../constants/god-mode-constants'
-import { GodModeHandInput } from '../input/god-mode-hand-controls'
 import {
   applyGodScaleGesture,
   type GodScaleGesture,
@@ -19,7 +13,7 @@ import {
   isGodScaleInteractionEnabled,
   resetGodScaleRoot,
 } from '../lib/scale-interaction'
-import { clearGodScaleHandStates, getGodScaleHandState } from '../store/god-mode-hand-store'
+import { getGodScaleHandState } from '../store/god-mode-hand-store'
 import { useGodScaleView } from '../store/god-mode-view-store'
 
 function isControllerGrabPressed(state: XRControllerState | undefined) {
@@ -67,6 +61,7 @@ function GodScaleController({ sceneRootRef }: { sceneRootRef: RefObject<Object3D
   const referenceSpace = useXR((state) => state.originReferenceSpace)
   const origin = useXR((state) => state.origin)
   const resetRequest = useGodScaleView((state) => state.resetRequest)
+  const playerMode = useXRPlayerMode((state) => state.mode)
   const gesture = useRef<GodScaleGesture>({ mode: null })
   const handledResetRequest = useRef(resetRequest)
   const leftPosition = useRef(new Vector3())
@@ -84,7 +79,7 @@ function GodScaleController({ sceneRootRef }: { sceneRootRef: RefObject<Object3D
     const mode: GodScaleGestureMode | null =
       leftPressed && rightPressed ? 'two' : leftPressed ? 'left' : rightPressed ? 'right' : null
 
-    if (!root || !isGodScaleInteractionEnabled(mode)) {
+    if (!root || playerMode !== XR_PLAYER_MODES.GOD || !isGodScaleInteractionEnabled(mode)) {
       gesture.current.mode = null
       return
     }
@@ -115,6 +110,7 @@ function GodScaleController({ sceneRootRef }: { sceneRootRef: RefObject<Object3D
 
 function GodScaleHandController({ sceneRootRef }: { sceneRootRef: RefObject<Object3D | null> }) {
   const resetRequest = useGodScaleView((state) => state.resetRequest)
+  const playerMode = useXRPlayerMode((state) => state.mode)
   const gesture = useRef<GodScaleGesture>({ mode: null })
   const handledResetRequest = useRef(resetRequest)
   const nextPosition = useRef(new Vector3())
@@ -136,7 +132,7 @@ function GodScaleHandController({ sceneRootRef }: { sceneRootRef: RefObject<Obje
             ? 'right'
             : null
 
-    if (!root || !isGodScaleInteractionEnabled(mode)) {
+    if (!root || playerMode !== XR_PLAYER_MODES.GOD || !isGodScaleInteractionEnabled(mode)) {
       gesture.current.mode = null
       return
     }
@@ -154,24 +150,10 @@ function GodScaleHandController({ sceneRootRef }: { sceneRootRef: RefObject<Obje
   return null
 }
 
-function GodModeControls({
-  sceneRootRef,
-  store,
-}: {
-  sceneRootRef: RefObject<Object3D | null>
-  store: ViewerXRStore
-}) {
+export function GodModeControls({ sceneRootRef }: { sceneRootRef: RefObject<Object3D | null> }) {
   const origin = useXR((state) => state.origin)
   const resetRequest = useGodScaleView((state) => state.resetRequest)
   const handledResetRequest = useRef(resetRequest)
-
-  useEffect(() => {
-    store.setHand(GodModeHandInput)
-    return () => {
-      clearGodScaleHandStates()
-      store.setHand(DefaultXRHand)
-    }
-  }, [store])
 
   useEffect(() => {
     if (handledResetRequest.current === resetRequest || !sceneRootRef.current || !origin) return
@@ -186,18 +168,5 @@ function GodModeControls({
       <GodScaleController sceneRootRef={sceneRootRef} />
       <GodScaleHandController sceneRootRef={sceneRootRef} />
     </group>
-  )
-}
-
-export function GodModeScene({ children, store }: { children: ReactNode; store: ViewerXRStore }) {
-  const sceneRootRef = useRef<Group | null>(null)
-
-  return (
-    <>
-      <GodModeControls sceneRootRef={sceneRootRef} store={store} />
-      <group name="god-scale-scene-root" ref={sceneRootRef}>
-        {children}
-      </group>
-    </>
   )
 }
