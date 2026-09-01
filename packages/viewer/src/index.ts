@@ -266,6 +266,7 @@ export {
 } from './systems/window/window-animation-system'
 export { buildWindowPreviewMesh, WindowSystem } from './systems/window/window-system'
 export { ZoneSystem } from './systems/zone/zone-system'
+export { requestGodScaleReset, useGodScaleView } from './xr/god-mode'
 export { useImmersiveXRPresentation } from './xr/presentation-context'
 export { createViewerXRStore, type ViewerXRStore } from './xr/store'
 export { getImmersiveVRSupport, type ImmersiveVRSupport } from './xr/support'

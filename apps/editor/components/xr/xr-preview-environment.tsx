@@ -1,8 +1,8 @@
 'use client'
 
 import { applySceneGraphToEditor, type SceneGraph } from '@pascal-app/editor'
-import { Viewer } from '@pascal-app/viewer'
-import { Glasses, LoaderCircle, X } from 'lucide-react'
+import { requestGodScaleReset, Viewer } from '@pascal-app/viewer'
+import { Glasses, LoaderCircle, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { mountEmulatorControls } from '@/lib/xr/emulator'
 import { requestEditorVRSession, useEditorXRRuntime, xrConfigForRuntime } from './xr-runtime'
@@ -105,14 +105,24 @@ export function XRPreviewEnvironment({ sceneId }: { sceneId?: string }) {
         <div className="absolute top-4 left-4 z-[1000] rounded-full border border-white/20 bg-black/60 px-3 py-1.5 text-white text-xs backdrop-blur">
           {inputSummary}
         </div>
-        <button
-          aria-label="Exit VR test environment"
-          className="absolute top-4 right-4 z-[1000] rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"
-          onClick={() => void session?.end()}
-          type="button"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="absolute top-4 right-4 z-[1000] flex gap-2">
+          <button
+            aria-label="Reset God view"
+            className="rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"
+            onClick={requestGodScaleReset}
+            type="button"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            aria-label="Exit VR test environment"
+            className="rounded-full border border-white/20 bg-black/60 p-2 text-white backdrop-blur hover:bg-black/80"
+            onClick={() => void session?.end()}
+            type="button"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </main>
     )
   }

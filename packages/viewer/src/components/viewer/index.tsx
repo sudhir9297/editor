@@ -29,6 +29,7 @@ import useViewer, { type RenderContext } from '../../store/use-viewer'
 import { FloorElevationSystem } from '../../systems/floor-elevation/floor-elevation-system'
 import { GeometrySystem } from '../../systems/geometry/geometry-system'
 import { shouldMountPostProcessingRenderDriver } from '../../xr/frame-loop'
+import { GOD_ORIGIN_POSITION, GodModeScene } from '../../xr/god-mode'
 import { ImmersiveXRPresentationProvider } from '../../xr/presentation-context'
 import { ViewerXRSessionRoot } from '../../xr/session-root'
 import type { ViewerXRStore } from '../../xr/store'
@@ -332,6 +333,7 @@ function SceneReadyTracker({
 
 export interface ViewerXRConfig {
   store: ViewerXRStore
+  godMode?: boolean
   multiview?: boolean
   originPosition?: [number, number, number]
   session?: XRSession
@@ -610,13 +612,14 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
         {xr ? (
           <ViewerXRSessionRoot
             fps={maxFps}
-            originPosition={xr.originPosition}
+            originPosition={xr.godMode ? GOD_ORIGIN_POSITION.toArray() : xr.originPosition}
             paused={renderPaused}
             session={xr.session}
             store={xr.store}
           >
             <ViewerScene
               disablePostFx
+              godMode={xr.godMode}
               hoverStyles={hoverStyles}
               immersiveXR
               onSceneReadyChange={onSceneReadyChange}
@@ -625,6 +628,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
               sceneReadyMaxWaitMs={sceneReadyMaxWaitMs}
               selectionManager={selectionManager}
               useBvh={useBvh}
+              xrStore={xr.store}
             >
               {children}
             </ViewerScene>
@@ -654,6 +658,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
 function ViewerScene({
   children,
   disablePostFx,
+  godMode = false,
   hoverStyles,
   immersiveXR = false,
   onSceneReadyChange,
@@ -662,9 +667,11 @@ function ViewerScene({
   sceneReadyMaxWaitMs,
   selectionManager,
   useBvh,
+  xrStore,
 }: {
   children?: React.ReactNode
   disablePostFx: boolean
+  godMode?: boolean
   hoverStyles: HoverStyles
   immersiveXR?: boolean
   onSceneReadyChange?: (ready: boolean) => void
@@ -673,7 +680,16 @@ function ViewerScene({
   sceneReadyMaxWaitMs?: number
   selectionManager: 'default' | 'custom'
   useBvh: boolean
+  xrStore?: ViewerXRStore
 }) {
+  const renderedScene = useBvh ? (
+    <SceneBvh>
+      <SceneRenderer />
+    </SceneBvh>
+  ) : (
+    <SceneRenderer />
+  )
+
   return (
     <>
       <ViewerCamera immersiveXR={immersiveXR} />
@@ -690,12 +706,10 @@ function ViewerScene({
         {/* <directionalLight position={[10, 10, 5]} intensity={0.5} castShadow
           /> */}
         <Lights />
-        {useBvh ? (
-          <SceneBvh>
-            <SceneRenderer />
-          </SceneBvh>
+        {godMode && xrStore ? (
+          <GodModeScene store={xrStore}>{renderedScene}</GodModeScene>
         ) : (
-          <SceneRenderer />
+          renderedScene
         )}
 
         {/* Generic slab-elevation lift for any kind that declares
