@@ -28,6 +28,10 @@ import { installTextureNodeNullGuard } from '../../lib/texture-node-guard'
 import useViewer, { type RenderContext } from '../../store/use-viewer'
 import { FloorElevationSystem } from '../../systems/floor-elevation/floor-elevation-system'
 import { GeometrySystem } from '../../systems/geometry/geometry-system'
+import { shouldMountPostProcessingRenderDriver } from '../../xr/frame-loop'
+import { ImmersiveXRPresentationProvider } from '../../xr/presentation-context'
+import { ViewerXRSessionRoot } from '../../xr/session-root'
+import type { ViewerXRStore } from '../../xr/store'
 import { ErrorBoundary } from '../error-boundary'
 import { SceneRenderer } from '../renderers/scene-renderer'
 import FrameLimiter from './frame-limiter'
@@ -224,6 +228,14 @@ function ToneMappingExposure() {
   return null
 }
 
+function ImmersiveXRBackground() {
+  const background = useViewer((state) => {
+    const theme = getSceneTheme(state.sceneTheme)
+    return theme.backgroundSky ?? theme.background
+  })
+  return <color args={[background]} attach="background" />
+}
+
 function hasPendingSceneBuildWork() {
   const { dirtyNodes, nodes, rootNodeIds } = useScene.getState()
 
@@ -318,6 +330,13 @@ function SceneReadyTracker({
   return null
 }
 
+export interface ViewerXRConfig {
+  store: ViewerXRStore
+  multiview?: boolean
+  originPosition?: [number, number, number]
+  session?: XRSession
+}
+
 interface ViewerProps {
   children?: React.ReactNode
   hoverStyles?: HoverStyles
@@ -378,6 +397,8 @@ interface ViewerProps {
   disablePostFx?: boolean
   /** Keep the mounted renderer/context warm without advancing scene frames. */
   renderPaused?: boolean
+  /** Mount the viewer in immersive WebXR mode using a WebGL renderer. */
+  xr?: ViewerXRConfig
 }
 
 /** Imperative handle exposed via `ref` on `<Viewer>`. */
@@ -408,6 +429,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
     maxFps = 50,
     disablePostFx = false,
     renderPaused = false,
+    xr,
   },
   ref,
 ) {
@@ -511,6 +533,15 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
     if (showGpuFallback) onSceneReadyChange?.(true)
   }, [showGpuFallback, onSceneReadyChange])
 
+  useEffect(() => {
+    if (!xr?.session) return
+
+    // An already-active immersive session can suppress the initial observer
+    // notification when the WebGL canvas replaces the desktop WebGPU canvas.
+    const timeout = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 0)
+    return () => window.clearTimeout(timeout)
+  }, [xr?.session])
+
   if (showGpuFallback) {
     return <UnsupportedGpuViewerFallback />
   }
@@ -529,6 +560,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
           if (cached) return cached
           const promise = (async () => {
             const result = await initializeGpuRenderer({
+              forceWebGL: xr != null,
               // Supplying `device` makes three skip its own `requestAdapter`,
               // so R3F's `powerPreference` only reaches the GPU if we forward it.
               powerPreference: props.powerPreference,
@@ -537,6 +569,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
                   ...(props as any),
                   ...backendParameters,
                   alpha: true,
+                  multiview: xr?.multiview ?? false,
                 })
                 renderer.toneMapping = THREE.ACESFilmicToneMapping
                 renderer.toneMappingExposure = getSceneTheme(
@@ -546,7 +579,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
               },
             })
             if (result.status === 'ready') {
-              installEmptyDrawGuard(result.renderer)
+              if (!xr) installEmptyDrawGuard(result.renderer)
               return result.renderer
             }
 
@@ -573,8 +606,78 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
         enabled: shadowsEnabled,
       }}
     >
-      <FrameLimiter fps={maxFps} paused={renderPaused} />
-      <ViewerCamera />
+      <ImmersiveXRPresentationProvider enabled={xr != null}>
+        {xr ? (
+          <ViewerXRSessionRoot
+            fps={maxFps}
+            originPosition={xr.originPosition}
+            paused={renderPaused}
+            session={xr.session}
+            store={xr.store}
+          >
+            <ViewerScene
+              disablePostFx
+              hoverStyles={hoverStyles}
+              immersiveXR
+              onSceneReadyChange={onSceneReadyChange}
+              perf={perf}
+              sceneReadyKey={sceneReadyKey}
+              sceneReadyMaxWaitMs={sceneReadyMaxWaitMs}
+              selectionManager={selectionManager}
+              useBvh={useBvh}
+            >
+              {children}
+            </ViewerScene>
+          </ViewerXRSessionRoot>
+        ) : (
+          <>
+            <FrameLimiter fps={maxFps} paused={renderPaused} />
+            <ViewerScene
+              disablePostFx={disablePostFx}
+              hoverStyles={hoverStyles}
+              onSceneReadyChange={onSceneReadyChange}
+              perf={perf}
+              sceneReadyKey={sceneReadyKey}
+              sceneReadyMaxWaitMs={sceneReadyMaxWaitMs}
+              selectionManager={selectionManager}
+              useBvh={useBvh}
+            >
+              {children}
+            </ViewerScene>
+          </>
+        )}
+      </ImmersiveXRPresentationProvider>
+    </Canvas>
+  )
+})
+
+function ViewerScene({
+  children,
+  disablePostFx,
+  hoverStyles,
+  immersiveXR = false,
+  onSceneReadyChange,
+  perf,
+  sceneReadyKey,
+  sceneReadyMaxWaitMs,
+  selectionManager,
+  useBvh,
+}: {
+  children?: React.ReactNode
+  disablePostFx: boolean
+  hoverStyles: HoverStyles
+  immersiveXR?: boolean
+  onSceneReadyChange?: (ready: boolean) => void
+  perf: boolean
+  sceneReadyKey?: string | number | null
+  sceneReadyMaxWaitMs?: number
+  selectionManager: 'default' | 'custom'
+  useBvh: boolean
+}) {
+  return (
+    <>
+      <ViewerCamera immersiveXR={immersiveXR} />
+      {immersiveXR && <ImmersiveXRBackground />}
       <PointerRaycastLayers />
       <GPUDeviceWatcher />
       <ToneMappingExposure />
@@ -583,7 +686,6 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
         sceneReadyKey={sceneReadyKey}
         sceneReadyMaxWaitMs={sceneReadyMaxWaitMs}
       />
-
       <ErrorBoundary fallback={null} scope="viewer-scene">
         {/* <directionalLight position={[10, 10, 5]} intensity={0.5} castShadow
           /> */}
@@ -613,14 +715,16 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
             kind's `def.system` is loaded via lazy() and rendered here,
             ordered by `system.priority`. */}
         <RegisteredSystems />
-        <PostProcessing disablePostFx={disablePostFx} hoverStyles={hoverStyles} />
+        {shouldMountPostProcessingRenderDriver(immersiveXR) && (
+          <PostProcessing disablePostFx={disablePostFx} hoverStyles={hoverStyles} />
+        )}
         {selectionManager === 'default' && <SelectionManager />}
         {(perf || PERF_OVERLAY_ENABLED) && <PerfMonitor />}
         {children}
       </ErrorBoundary>
-    </Canvas>
+    </>
   )
-})
+}
 
 const DebugRenderer = () => {
   useFrame(({ gl, scene, camera }) => {

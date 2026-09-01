@@ -17,6 +17,7 @@ import {
   getSceneTheme,
   horizonHazeColor,
   NodeRenderer,
+  useImmersiveXRPresentation,
   useNodeEvents,
   useViewer,
 } from '@pascal-app/viewer'
@@ -127,6 +128,7 @@ function addSlabHoles(
 
 export const SiteRenderer = ({ node }: { node: SiteNode }) => {
   const ref = useRef<Group>(null!)
+  const immersiveXR = useImmersiveXRPresentation()
 
   useRegistry(node.id, 'site', ref)
 
@@ -381,7 +383,7 @@ export const SiteRenderer = ({ node }: { node: SiteNode }) => {
       )}
 
       {/* Infinite-ground presentation disc fading into the sky at the horizon */}
-      {horizonGeometry && horizonMaterial && fadeBounds && (
+      {!immersiveXR && horizonGeometry && horizonMaterial && fadeBounds && (
         <mesh
           geometry={horizonGeometry}
           material={horizonMaterial}

@@ -1,0 +1,102 @@
+// @ts-expect-error — bun:test is provided by the Bun runtime; viewer does not
+// include Bun ambient types in its production declaration build.
+import { describe, expect, mock, test } from 'bun:test'
+import {
+  renderImmersiveXRFrame,
+  shouldMountPostProcessingRenderDriver,
+  shouldPauseFrameLimiterForXR,
+  takeOverXRFrameLoop,
+} from './frame-loop'
+
+describe('takeOverXRFrameLoop', () => {
+  test('pauses the desktop frame loop as soon as an XR session is supplied', () => {
+    expect(shouldPauseFrameLimiterForXR(false, {} as XRSession)).toBe(true)
+    expect(shouldPauseFrameLimiterForXR(false, undefined)).toBe(false)
+    expect(shouldPauseFrameLimiterForXR(true, undefined)).toBe(true)
+  })
+
+  test('leaves XR rendering exclusively to Three’s XR animation loop', () => {
+    expect(shouldMountPostProcessingRenderDriver(true)).toBe(false)
+    expect(shouldMountPostProcessingRenderDriver(false)).toBe(true)
+  })
+
+  test('updates the stereo camera before drawing the immersive scene', () => {
+    const calls: string[] = []
+    const xrCamera = { type: 'xr-camera' }
+    const renderer = {
+      render: mock((_scene: unknown, camera: unknown) => {
+        expect(camera).toBe(xrCamera)
+        calls.push('render')
+      }),
+      xr: {
+        cameraAutoUpdate: true,
+        getCamera: mock(() => {
+          calls.push('get-camera')
+          return xrCamera
+        }),
+        updateCamera: mock(() => calls.push('update-camera')),
+      },
+    }
+
+    renderImmersiveXRFrame(renderer, { type: 'scene' }, { type: 'app-camera' })
+
+    expect(calls).toEqual(['update-camera', 'get-camera', 'render'])
+    expect(renderer.xr.cameraAutoUpdate).toBe(true)
+  })
+
+  test('restores automatic camera updates when an XR draw fails', () => {
+    const renderer = {
+      render: mock(() => {
+        throw new Error('draw failed')
+      }),
+      xr: {
+        cameraAutoUpdate: true,
+        getCamera: mock(() => ({ type: 'xr-camera' })),
+        updateCamera: mock(() => undefined),
+      },
+    }
+
+    expect(() => renderImmersiveXRFrame(renderer, {}, {})).toThrow('draw failed')
+    expect(renderer.xr.cameraAutoUpdate).toBe(true)
+  })
+
+  test('disconnects R3F and installs the renderer-owned XR frame loop', async () => {
+    const calls: string[] = []
+    const setAnimationLoop = mock(async (callback: XRFrameRequestCallback | null) => {
+      calls.push(callback ? 'set-loop' : 'clear-loop')
+    })
+    const renderer = {
+      setAnimationLoop,
+      setPixelRatio: mock((dpr: number) => calls.push(`dpr:${dpr}`)),
+      setSize: mock((width: number, height: number) => calls.push(`size:${width}x${height}`)),
+      xr: { enabled: false },
+    }
+    const r3fXR = {
+      connect: mock(() => calls.push('connect')),
+      disconnect: mock(() => calls.push('disconnect')),
+    }
+    const renderFrame = (() => undefined) as XRFrameRequestCallback
+
+    const restore = await takeOverXRFrameLoop(renderer, r3fXR, renderFrame, {
+      dpr: 1.5,
+      height: 800,
+      width: 936,
+    })
+
+    expect(calls).toEqual(['disconnect', 'dpr:1.5', 'size:936x800', 'set-loop'])
+    expect(renderer.xr.enabled).toBe(true)
+    expect(setAnimationLoop).toHaveBeenCalledWith(renderFrame)
+
+    restore()
+
+    expect(calls).toEqual([
+      'disconnect',
+      'dpr:1.5',
+      'size:936x800',
+      'set-loop',
+      'clear-loop',
+      'connect',
+    ])
+    expect(renderer.xr.enabled).toBe(false)
+  })
+})

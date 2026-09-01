@@ -9,6 +9,7 @@ import {
   CommunityViewerToolbarLeft,
   CommunityViewerToolbarRight,
 } from '@/components/viewer-toolbar'
+import { openXRPreview } from '@/lib/xr/preview-window'
 
 // The open-source editor only ships the built-in catalog (no uploaded items),
 // so the Library/Community/Mine source chips and tag filters add nothing —
@@ -109,7 +110,12 @@ export default function Home() {
         projectId={PROJECT_ID}
         sidebarTabs={SIDEBAR_TABS}
         viewerToolbarLeft={<CommunityViewerToolbarLeft />}
-        viewerToolbarRight={<CommunityViewerToolbarRight />}
+        viewerToolbarRight={
+          <CommunityViewerToolbarRight
+            onVRToggle={() => openXRPreview('/xr')}
+            vrLabel="Open WebXR test environment"
+          />
+        }
       />
     </div>
   )

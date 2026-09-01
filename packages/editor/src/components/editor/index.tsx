@@ -17,6 +17,7 @@ import {
   SceneEnvironment,
   useViewer,
   Viewer,
+  type ViewerXRConfig,
 } from '@pascal-app/viewer'
 import { memo, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { ViewerOverlay } from '../../components/viewer-overlay'
@@ -202,6 +203,9 @@ export interface EditorProps {
    * module-load URL flags or shading toggles.
    */
   disablePostFx?: boolean
+
+  /** Host-provided immersive XR runtime for the main 3D canvas. */
+  xr?: ViewerXRConfig
 
   // Version preview overlays (rendered by host app)
   sidebarOverlay?: ReactNode
@@ -752,6 +756,7 @@ const ViewerSceneContent = memo(function ViewerSceneContent({
   isVersionPreviewMode,
   isLoading,
   isFirstPersonMode,
+  isXRMode,
   isStudioMode,
   onThumbnailCapture,
   viewerSceneSlot,
@@ -759,6 +764,7 @@ const ViewerSceneContent = memo(function ViewerSceneContent({
   isVersionPreviewMode: boolean
   isLoading: boolean
   isFirstPersonMode: boolean
+  isXRMode: boolean
   isStudioMode: boolean
   onThumbnailCapture?: (blob: Blob, cameraData: SnapshotCameraData) => void
   viewerSceneSlot?: ReactNode
@@ -769,11 +775,12 @@ const ViewerSceneContent = memo(function ViewerSceneContent({
   // selection, editing handles, and the tool manager (which mounts the site
   // boundary flags) so the framed shot stays clean.
   const isCaptureMode = useEditor((s) => s.isCaptureMode)
-  const noEditing = isVersionPreviewMode || isFirstPersonMode || isStudioMode || isCaptureMode
+  const noEditing =
+    isVersionPreviewMode || isFirstPersonMode || isXRMode || isStudioMode || isCaptureMode
   return (
     <>
       <SceneEnvironment />
-      {!(isFirstPersonMode || isStudioMode || isCaptureMode) && <SelectionManager />}
+      {!noEditing && <SelectionManager />}
       {!noEditing && <BoxSelectTool />}
       {!noEditing && <NodeArrowHandles />}
       {!noEditing && <GroupRotateHandle />}
@@ -785,7 +792,7 @@ const ViewerSceneContent = memo(function ViewerSceneContent({
       {!noEditing && <FloatingActionMenu />}
       {!noEditing && <GroupFloatingActionMenu />}
       {!noEditing && <FloatingBuildingActionMenu />}
-      {!isFirstPersonMode && <WallMeasurementLabel />}
+      {!(isFirstPersonMode || isXRMode) && <WallMeasurementLabel />}
       <ExportManager />
       {isFirstPersonMode ? <ViewerZoneSystem /> : <ZoneSystem />}
       <CeilingSystem />
@@ -793,12 +800,12 @@ const ViewerSceneContent = memo(function ViewerSceneContent({
       {!noEditing && <SelectionAffordanceManager />}
       <RoofEditSystem />
       <StairEditSystem />
-      {!(isLoading || isFirstPersonMode) && <SnapAwareGrid />}
+      {!(isLoading || isFirstPersonMode || isXRMode) && <SnapAwareGrid />}
       {!(isLoading || noEditing) && <ToolManager />}
       {isFirstPersonMode && <FirstPersonControls />}
-      <CustomCameraControls />
-      <ThumbnailGenerator onThumbnailCapture={onThumbnailCapture} />
-      {!isFirstPersonMode && <SiteEdgeLabels />}
+      {!isXRMode && <CustomCameraControls />}
+      {!isXRMode && <ThumbnailGenerator onThumbnailCapture={onThumbnailCapture} />}
+      {!(isFirstPersonMode || isXRMode) && <SiteEdgeLabels />}
       <InteractiveSystem />
       {!noEditing && viewerSceneSlot}
     </>
@@ -986,6 +993,7 @@ const ViewerCanvas = memo(function ViewerCanvas({
   viewerSceneSlot,
   floorplanSceneSlot,
   disablePostFx = false,
+  xr,
 }: {
   isVersionPreviewMode: boolean
   isLoading: boolean
@@ -999,6 +1007,7 @@ const ViewerCanvas = memo(function ViewerCanvas({
   viewerSceneSlot?: ReactNode
   floorplanSceneSlot?: ReactNode
   disablePostFx?: boolean
+  xr?: ViewerXRConfig
 }) {
   const viewMode = useEditor((s) => s.viewMode)
   const floorplanPaneRatio = useEditor((s) => s.floorplanPaneRatio)
@@ -1119,12 +1128,14 @@ const ViewerCanvas = memo(function ViewerCanvas({
             renderPaused={!show3d && !showLoader}
             sceneReadyKey={sceneReadyKey}
             selectionManager={isFirstPersonMode ? 'default' : 'custom'}
+            xr={xr}
           >
             <ViewerSceneContent
               isFirstPersonMode={isFirstPersonMode}
               isLoading={showLoader}
               isStudioMode={isStudioMode}
               isVersionPreviewMode={isVersionPreviewMode}
+              isXRMode={xr != null}
               onThumbnailCapture={onThumbnailCapture}
               viewerSceneSlot={viewerSceneSlot}
             />
@@ -1214,6 +1225,7 @@ export default function Editor({
   onLoaderChange,
   onThumbnailCapture,
   disablePostFx = false,
+  xr,
   sidebarOverlay,
   viewerBanner,
   settingsPanelProps,
@@ -1446,6 +1458,7 @@ export default function Editor({
       showLoader={showLoader}
       viewerSceneSlot={viewerSceneSlot}
       floorplanSceneSlot={floorplanSceneSlot}
+      xr={xr}
     />
   )
 
