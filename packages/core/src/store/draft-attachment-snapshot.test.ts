@@ -6,6 +6,13 @@ import { subscribeSceneCommits } from './history-control'
 import useScene from './use-scene'
 
 test('draft snapshots do not enumerate unaffected procedural attachment maps', () => {
+  const originalRaf = globalThis.requestAnimationFrame
+  const originalCancelRaf = globalThis.cancelAnimationFrame
+  globalThis.requestAnimationFrame = (callback) => {
+    callback(0)
+    return 0
+  }
+  globalThis.cancelAnimationFrame = () => {}
   const saved = useScene.getState()
   const level = LevelNode.parse({})
   const draft = LevelNode.parse({ metadata: { isNew: true } })
@@ -68,5 +75,7 @@ test('draft snapshots do not enumerate unaffected procedural attachment maps', (
     useScene.setState(saved)
     useScene.temporal.getState().clear()
     useScene.temporal.getState().resume()
+    globalThis.requestAnimationFrame = originalRaf
+    globalThis.cancelAnimationFrame = originalCancelRaf
   }
 })
