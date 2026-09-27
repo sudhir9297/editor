@@ -1244,7 +1244,11 @@ function ArcArrow({
           while (delta > Math.PI) delta -= 2 * Math.PI
           while (delta < -Math.PI) delta += 2 * Math.PI
 
-          if (!moveEvent.shiftKey && descriptor.shape === 'rotate' && descriptor.continuous !== true) {
+          if (
+            !moveEvent.shiftKey &&
+            descriptor.shape === 'rotate' &&
+            descriptor.continuous !== true
+          ) {
             delta = Math.round(delta / DEFAULT_ANGLE_STEP) * DEFAULT_ANGLE_STEP
           }
 
