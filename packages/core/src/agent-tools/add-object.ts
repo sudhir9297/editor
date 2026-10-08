@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { geometryMetaFields } from '../schema/geometry-metadata'
 import { measurement } from './measurement'
 import { NodeId } from './node-id'
 
@@ -10,7 +11,7 @@ Module shape (import THREE from the three package as usual; the addons below too
   export const mount = 'floor'   // 'floor' | 'wall-side' (on a wall face) | 'wall' (through a wall, like a window) | 'ceiling'
   export default function build({ params, THREE }) { const group = new THREE.Group(); /* … */ return group }
 
-One object is one feature that changes together: a porch, a railing run, a fireplace surround, a ceiling with its beams. Never a whole house, and never walls, rooms, floors, roofs, stairs, doors or windows: those have their own tools.
+One object is one feature that changes together: a porch, a railing run, a fireplace surround, a ceiling with its beams. Never a whole house, and never walls, rooms, floors, roofs, stairs, doors or windows: those have their own tools. A new object says what it stands in for (reason): the scene check lists every authored object with its reason, so each names something Pascal has no type for. On a floor, a plain box with a wall's size or a floor plate is refused with the tool to use (use_walls, use_slab); a detailed object with a wall's size (a bookcase, a screen), or one named after something Pascal builds, is built with a hint naming the tool.
 
 Conventions (they make the object work in Pascal; follow them):
 - Metres, Y up, modelled as it stands. Pascal puts the bottom-centre of the bounds at the placement point; for wall-side the back face sits on the wall and the object faces +Z.
@@ -66,12 +67,19 @@ export const addObjectTool = {
       .enum(['front', 'back'])
       .optional()
       .describe('Which wall face a wall-side object sits on.'),
-    name: z.string().max(120).optional().describe('What the user would call it ("Front porch").'),
-    category: z
+    ...geometryMetaFields,
+    name: geometryMetaFields.name.describe('What the user would call it ("Front porch").'),
+    category: geometryMetaFields.category.describe(
+      'What it is, one word or two ("porch", "lantern", "ceiling", "trim").',
+    ),
+    reason: z
       .string()
-      .max(60)
+      .min(1)
+      .max(200)
       .optional()
-      .describe('What it is, one word or two ("porch", "lantern", "ceiling", "trim").'),
+      .describe(
+        'What it stands in for: why no Pascal tool or catalog item builds it ("no cornice type"). Required to create; an edit keeps it unless given.',
+      ),
   },
 }
 
